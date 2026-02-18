@@ -1,0 +1,11 @@
+.git
+.gitignore
+.venv
+.venv314
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+composition_evaluator.db
+alembic/versions/__pycache__
+tests

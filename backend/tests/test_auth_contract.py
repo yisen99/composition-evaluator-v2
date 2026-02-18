@@ -4,9 +4,11 @@ from app.main import app
 
 
 def test_send_code_contract() -> None:
-    client = TestClient(app)
-
-    response = client.post("/api/v1/auth/send-code", json={"phone": "13800138000", "role_hint": "teacher"})
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/auth/send-code",
+            json={"phone": "13800138000", "role_hint": "teacher"},
+        )
 
     assert response.status_code == 200
     payload = response.json()
@@ -15,9 +17,11 @@ def test_send_code_contract() -> None:
 
 
 def test_login_contract() -> None:
-    client = TestClient(app)
-
-    response = client.post("/api/v1/auth/login", json={"phone": "13800138000", "code": "123456"})
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"phone": "13800138000", "code": "123456"},
+        )
 
     assert response.status_code == 200
     payload = response.json()
