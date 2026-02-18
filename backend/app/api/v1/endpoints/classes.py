@@ -43,6 +43,7 @@ def create_class(payload: CreateClassRequest, db: Session = Depends(get_db)) -> 
             display_name=payload.teacher_name,
         )
         db.add(teacher)
+        db.flush()
 
     classroom = ClassRoom(
         id=str(uuid4()),
@@ -75,6 +76,7 @@ def join_class(payload: JoinClassRequest, db: Session = Depends(get_db)) -> Join
             display_name=payload.student_name,
         )
         db.add(student)
+        db.flush()
 
     membership = db.scalar(
         select(ClassMember).where(
