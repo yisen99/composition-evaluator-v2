@@ -4,7 +4,9 @@ import {
   checkHealth,
   createAssignment,
   createClass,
-  joinClass
+  joinClass,
+  listAssignments,
+  listClasses
 } from "@/lib/api/client";
 
 describe("frontend smoke", () => {
@@ -113,6 +115,62 @@ describe("frontend smoke", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify(payload)
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("lists classes via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify([{ class_id: "class-1", name: "三年级一班", grade_band: "primary", join_code: "ABC123" }]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await listClasses();
+    expect(data).toHaveLength(1);
+    expect(data[0].class_id).toBe("class-1");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/classes",
+      expect.objectContaining({
+        method: "GET"
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("lists assignments via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            assignment_id: "asg-1",
+            class_id: "class-1",
+            title: "我的家乡",
+            prompt: "请写一篇介绍家乡景色与人情的作文。",
+            due_at: "2026-03-01T23:59:59",
+            status: "published"
+          }
+        ]),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await listAssignments();
+    expect(data).toHaveLength(1);
+    expect(data[0].assignment_id).toBe("asg-1");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/assignments",
+      expect.objectContaining({
+        method: "GET"
       })
     );
 

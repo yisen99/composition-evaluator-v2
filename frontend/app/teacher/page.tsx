@@ -1,9 +1,9 @@
 "use client";
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { createAssignment, createClass } from "@/lib/api/client";
+import { createAssignment, createClass, listAssignments, listClasses } from "@/lib/api/client";
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
-import type { CreateClassResponse, GradeBand, UserProfile } from "@/lib/api/types";
+import type { AssignmentListItem, ClassListItem, GradeBand, UserProfile } from "@/lib/api/types";
 
 type Toast = {
   type: "ok" | "error";
@@ -14,21 +14,57 @@ export default function TeacherPage() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [className, setClassName] = useState("三年级一班");
   const [gradeBand, setGradeBand] = useState<GradeBand>("primary");
-  const [classroomList, setClassroomList] = useState<Array<CreateClassResponse & { name: string }>>([]);
+  const [classroomList, setClassroomList] = useState<ClassListItem[]>([]);
   const [selectedClassId, setSelectedClassId] = useState("");
 
   const [assignmentTitle, setAssignmentTitle] = useState("我的家乡");
   const [assignmentPrompt, setAssignmentPrompt] = useState("请写一篇介绍家乡景色与人情的作文，600字左右。");
   const [dueAt, setDueAt] = useState("");
+  const [assignmentList, setAssignmentList] = useState<AssignmentListItem[]>([]);
   const [latestAssignmentId, setLatestAssignmentId] = useState("");
 
-  const [busy, setBusy] = useState<"class" | "assignment" | null>(null);
+  const [busy, setBusy] = useState<"class" | "assignment" | "loading" | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
 
   useEffect(() => {
     const session = getAuthSession();
     setCurrentUser(session?.user ?? null);
   }, []);
+
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== "teacher") {
+      return;
+    }
+
+    let cancelled = false;
+
+    const hydrate = async () => {
+      setBusy("loading");
+      try {
+        const [loadedClasses, loadedAssignments] = await Promise.all([listClasses(), listAssignments()]);
+        if (cancelled) {
+          return;
+        }
+        setClassroomList(loadedClasses);
+        setAssignmentList(loadedAssignments);
+        setSelectedClassId((prev) => prev || loadedClasses[0]?.class_id || "");
+        setLatestAssignmentId(loadedAssignments[0]?.assignment_id || "");
+      } catch (error) {
+        if (!cancelled) {
+          setToast({ type: "error", message: `数据加载失败：${(error as Error).message}` });
+        }
+      } finally {
+        if (!cancelled) {
+          setBusy(null);
+        }
+      }
+    };
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
 
   const selectedClassName = useMemo(
     () => classroomList.find((item) => item.class_id === selectedClassId)?.name ?? "",
@@ -44,7 +80,12 @@ export default function TeacherPage() {
         name: className.trim(),
         grade_band: gradeBand
       });
-      const row = { ...created, name: className.trim() };
+      const row: ClassListItem = {
+        class_id: created.class_id,
+        join_code: created.join_code,
+        name: className.trim(),
+        grade_band: gradeBand
+      };
       setClassroomList((prev) => [row, ...prev]);
       setSelectedClassId((prev) => (prev ? prev : created.class_id));
       setToast({ type: "ok", message: `建班成功，班级码：${created.join_code}` });
@@ -71,6 +112,15 @@ export default function TeacherPage() {
         due_at: dueAt ? new Date(dueAt).toISOString() : undefined
       };
       const created = await createAssignment(payload);
+      const row: AssignmentListItem = {
+        assignment_id: created.assignment_id,
+        class_id: selectedClassId,
+        title: payload.title,
+        prompt: payload.prompt,
+        due_at: payload.due_at ?? null,
+        status: created.status
+      };
+      setAssignmentList((prev) => [row, ...prev]);
       setLatestAssignmentId(created.assignment_id);
       setToast({ type: "ok", message: `任务发布成功，任务ID：${created.assignment_id}` });
     } catch (error) {
@@ -210,6 +260,8 @@ export default function TeacherPage() {
             </div>
           ) : null}
 
+          {busy === "loading" ? <p className="text-sm text-slate-700">正在同步班级与任务历史...</p> : null}
+
           <div className="grid gap-4 lg:grid-cols-2">
             <div className="paper-card p-4">
               <p className="label">已创建班级</p>
@@ -220,6 +272,7 @@ export default function TeacherPage() {
                   classroomList.map((room) => (
                     <li key={room.class_id} className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-2">
                       <p className="font-semibold">{room.name}</p>
+                      <p className="text-xs text-slate-700">学段：{room.grade_band === "primary" ? "小学" : "初中"}</p>
                       <p className="text-xs text-slate-700">Class ID: {room.class_id}</p>
                       <p className="text-xs text-slate-700">Join Code: {room.join_code}</p>
                     </li>
@@ -228,10 +281,26 @@ export default function TeacherPage() {
               </ul>
             </div>
             <div className="paper-card p-4">
-              <p className="label">最新发布结果</p>
+              <p className="label">任务发布记录</p>
               <div className="mt-2 space-y-2 text-sm">
                 <p>当前选中班级：{selectedClassName || "未选择"}</p>
                 <p>最新任务 ID：{latestAssignmentId || "尚未发布"}</p>
+                <ul className="space-y-2">
+                  {assignmentList.length === 0 ? (
+                    <li className="text-slate-600">暂无任务，请先发布作文任务。</li>
+                  ) : (
+                    assignmentList.slice(0, 5).map((assignment) => (
+                      <li
+                        key={assignment.assignment_id}
+                        className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-2 text-xs text-slate-700"
+                      >
+                        <p className="text-sm font-semibold text-slate-900">{assignment.title}</p>
+                        <p>任务ID：{assignment.assignment_id}</p>
+                        <p>班级ID：{assignment.class_id}</p>
+                      </li>
+                    ))
+                  )}
+                </ul>
                 <p className="text-slate-600">学生端登录后可输入班级码完成加入。</p>
               </div>
             </div>

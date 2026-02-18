@@ -1,4 +1,6 @@
 import type {
+  AssignmentListItem,
+  ClassListItem,
   CreateAssignmentRequest,
   CreateAssignmentResponse,
   CreateClassRequest,
@@ -79,5 +81,17 @@ export function createAssignment(payload: CreateAssignmentRequest): Promise<Crea
   return apiRequest<CreateAssignmentResponse>("/api/v1/assignments", {
     method: "POST",
     body: JSON.stringify(payload)
+  });
+}
+
+export function listClasses(): Promise<ClassListItem[]> {
+  return apiRequest<ClassListItem[]>("/api/v1/classes", {
+    method: "GET"
+  });
+}
+
+export function listAssignments(): Promise<AssignmentListItem[]> {
+  return apiRequest<AssignmentListItem[]>("/api/v1/assignments", {
+    method: "GET"
   });
 }

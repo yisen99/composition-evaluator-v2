@@ -149,3 +149,50 @@ def test_role_guard_blocks_student_from_creating_class() -> None:
 
     assert create_response.status_code == 403
     assert create_response.json()["detail"] == "Teacher role required"
+
+
+def test_teacher_can_list_classes_and_assignments() -> None:
+    with TestClient(app) as client:
+        teacher_token, _ = _login(
+            client,
+            phone=_phone(f"teacher-list-{time.time_ns()}"),
+            role="teacher",
+            display_name="赵老师",
+        )
+        create_response = client.post(
+            "/api/v1/classes",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={"name": "六年级二班", "grade_band": "primary"},
+        )
+        assert create_response.status_code == 201
+        class_payload = create_response.json()
+
+        publish_response = client.post(
+            "/api/v1/assignments",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={
+                "class_id": class_payload["class_id"],
+                "title": "雨中的校园",
+                "prompt": "描写一场雨中的校园生活。",
+                "due_at": "2026-03-10T09:00:00",
+            },
+        )
+        assert publish_response.status_code == 201
+        assignment_payload = publish_response.json()
+
+        classes_response = client.get(
+            "/api/v1/classes",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+        )
+        assignments_response = client.get(
+            "/api/v1/assignments",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+        )
+
+    assert classes_response.status_code == 200
+    class_ids = [item["class_id"] for item in classes_response.json()]
+    assert class_payload["class_id"] in class_ids
+
+    assert assignments_response.status_code == 200
+    assignment_ids = [item["assignment_id"] for item in assignments_response.json()]
+    assert assignment_payload["assignment_id"] in assignment_ids

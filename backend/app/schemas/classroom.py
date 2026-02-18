@@ -2,10 +2,12 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+ClassGradeBand = Literal["primary", "junior"]
+
 
 class CreateClassRequest(BaseModel):
     name: str
-    grade_band: Literal["primary", "junior"]
+    grade_band: ClassGradeBand
 
 
 class CreateClassResponse(BaseModel):
@@ -21,3 +23,10 @@ class JoinClassRequest(BaseModel):
 class JoinClassResponse(BaseModel):
     class_id: str
     class_name: str
+
+
+class ClassListItem(BaseModel):
+    class_id: str
+    name: str
+    grade_band: ClassGradeBand
+    join_code: str

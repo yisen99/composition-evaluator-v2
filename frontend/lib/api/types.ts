@@ -44,6 +44,13 @@ export type CreateClassResponse = {
   join_code: string;
 };
 
+export type ClassListItem = {
+  class_id: string;
+  name: string;
+  grade_band: GradeBand;
+  join_code: string;
+};
+
 export type JoinClassRequest = {
   join_code: string;
   student_name?: string;
@@ -64,5 +71,14 @@ export type CreateAssignmentRequest = {
 export type CreateAssignmentResponse = {
   assignment_id: string;
   class_id: string;
+  status: string;
+};
+
+export type AssignmentListItem = {
+  assignment_id: string;
+  class_id: string;
+  title: string;
+  prompt: string;
+  due_at?: string | null;
   status: string;
 };

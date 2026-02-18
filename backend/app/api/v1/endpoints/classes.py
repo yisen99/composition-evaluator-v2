@@ -1,15 +1,23 @@
 import secrets
 import string
+from typing import cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.deps.auth import require_student, require_teacher
+from app.api.deps.auth import get_current_user, require_student, require_teacher
 from app.db.deps import get_db
 from app.models import ClassMember, ClassRoom, User
-from app.schemas.classroom import CreateClassRequest, CreateClassResponse, JoinClassRequest, JoinClassResponse
+from app.schemas.classroom import (
+    ClassGradeBand,
+    ClassListItem,
+    CreateClassRequest,
+    CreateClassResponse,
+    JoinClassRequest,
+    JoinClassResponse,
+)
 
 router = APIRouter()
 
@@ -81,3 +89,33 @@ def join_class(
     db.commit()
 
     return JoinClassResponse(class_id=classroom.id, class_name=classroom.name)
+
+
+@router.get("", response_model=list[ClassListItem])
+def list_classes(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[ClassListItem]:
+    if current_user.role == "teacher":
+        classrooms = db.scalars(
+            select(ClassRoom)
+            .where(ClassRoom.teacher_id == current_user.id)
+            .order_by(ClassRoom.created_at.desc())
+        ).all()
+    else:
+        classrooms = db.scalars(
+            select(ClassRoom)
+            .join(ClassMember, ClassMember.class_id == ClassRoom.id)
+            .where(ClassMember.student_id == current_user.id)
+            .order_by(ClassRoom.created_at.desc())
+        ).all()
+
+    return [
+        ClassListItem(
+            class_id=classroom.id,
+            name=classroom.name,
+            grade_band=cast(ClassGradeBand, classroom.grade_band),
+            join_code=classroom.join_code,
+        )
+        for classroom in classrooms
+    ]

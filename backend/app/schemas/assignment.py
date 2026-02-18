@@ -14,3 +14,12 @@ class CreateAssignmentResponse(BaseModel):
     assignment_id: str
     class_id: str
     status: str
+
+
+class AssignmentListItem(BaseModel):
+    assignment_id: str
+    class_id: str
+    title: str
+    prompt: str
+    due_at: datetime | None = None
+    status: str
