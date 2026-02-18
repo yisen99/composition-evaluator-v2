@@ -94,6 +94,10 @@ export type AssignmentSubmissionItem = {
   created_at: string;
   file_url?: string | null;
   text_excerpt?: string | null;
+  latest_agent_name?: string | null;
+  latest_review_score?: number | null;
+  latest_review_feedback?: string | null;
+  latest_memory_note?: string | null;
 };
 
 export type AssignmentDetailResponse = {
@@ -125,4 +129,46 @@ export type CreateCompositionSubmissionResponse = {
   file_url?: string | null;
   status: string;
   created_at: string;
+};
+
+export type ReviewAgentName = "structure" | "language" | "value";
+
+export type RunSubmissionReviewRequest = {
+  submission_id: string;
+  agent_name: ReviewAgentName;
+};
+
+export type RunSubmissionReviewResponse = {
+  review_id: string;
+  submission_id: string;
+  assignment_id: string;
+  class_id: string;
+  student_id: string;
+  teacher_id: string;
+  agent_name: ReviewAgentName;
+  score: number;
+  feedback: string;
+  memory_note_id: string;
+  status: string;
+  created_at: string;
+};
+
+export type StudentMemoryItem = {
+  note_id: string;
+  student_id: string;
+  teacher_id: string;
+  class_id: string;
+  source_submission_id: string;
+  source_review_id: string;
+  agent_name: string;
+  note: string;
+  tags: string;
+  status: string;
+  created_at: string;
+};
+
+export type StudentMemoryResponse = {
+  student_id: string;
+  total: number;
+  items: StudentMemoryItem[];
 };

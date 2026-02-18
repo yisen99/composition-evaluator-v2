@@ -344,3 +344,85 @@ def test_student_can_submit_composition_and_teacher_can_view_assignment_detail()
     assert len(detail_payload["submissions"]) == 2
     student_ids = [item["student_id"] for item in detail_payload["submissions"]]
     assert student_user["id"] in student_ids
+
+
+def test_teacher_can_run_agent_review_and_fetch_student_memory() -> None:
+    with TestClient(app) as client:
+        teacher_token, _ = _login(
+            client,
+            phone=_phone(f"teacher-review-{time.time_ns()}"),
+            role="teacher",
+            display_name="何老师",
+        )
+        student_token, student_user = _login(
+            client,
+            phone=_phone(f"student-review-{time.time_ns()}"),
+            role="student",
+            display_name="小晴",
+        )
+
+        class_response = client.post(
+            "/api/v1/classes",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={"name": "六年级三班", "grade_band": "primary"},
+        )
+        class_payload = class_response.json()
+
+        assignment_response = client.post(
+            "/api/v1/assignments",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={
+                "class_id": class_payload["class_id"],
+                "title": "夜晚的操场",
+                "prompt": "描写夜晚操场的声音、光线和心情。",
+                "due_at": "2026-04-01T20:00:00",
+            },
+        )
+        assignment_payload = assignment_response.json()
+
+        join_response = client.post(
+            "/api/v1/classes/join",
+            headers={"Authorization": f"Bearer {student_token}"},
+            json={"join_code": class_payload["join_code"], "student_name": "小晴"},
+        )
+        assert join_response.status_code == 200
+
+        submit_response = client.post(
+            "/api/v1/submissions",
+            headers={"Authorization": f"Bearer {student_token}"},
+            data={
+                "assignment_id": assignment_payload["assignment_id"],
+                "content_type": "text",
+                "text_content": "夜晚的操场像一面安静的湖，路灯把树影拉得很长。",
+            },
+        )
+        assert submit_response.status_code == 201
+        submission_payload = submit_response.json()
+
+        forbidden_review_response = client.post(
+            "/api/v1/reviews/run",
+            headers={"Authorization": f"Bearer {student_token}"},
+            json={"submission_id": submission_payload["submission_id"], "agent_name": "value"},
+        )
+
+        review_response = client.post(
+            "/api/v1/reviews/run",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={"submission_id": submission_payload["submission_id"], "agent_name": "value"},
+        )
+        memory_response = client.get(
+            f"/api/v1/students/{student_user['id']}/memory",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+        )
+
+    assert forbidden_review_response.status_code == 403
+    assert review_response.status_code == 200
+    review_payload = review_response.json()
+    assert review_payload["submission_id"] == submission_payload["submission_id"]
+    assert review_payload["agent_name"] == "value"
+    assert review_payload["memory_note_id"]
+
+    assert memory_response.status_code == 200
+    memory_payload = memory_response.json()
+    assert len(memory_payload["items"]) >= 1
+    assert memory_payload["items"][0]["student_id"] == student_user["id"]

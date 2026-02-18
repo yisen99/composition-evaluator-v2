@@ -13,8 +13,11 @@ import type {
   JoinClassResponse,
   LoginRequest,
   LoginResponse,
+  RunSubmissionReviewRequest,
+  RunSubmissionReviewResponse,
   SendCodeRequest,
-  SendCodeResponse
+  SendCodeResponse,
+  StudentMemoryResponse
 } from "@/lib/api/types";
 import { getAccessToken } from "@/lib/auth/session";
 
@@ -138,4 +141,17 @@ export function createCompositionSubmission(
     formData.append("file", payload.file);
   }
   return apiFormRequest<CreateCompositionSubmissionResponse>("/api/v1/submissions", formData);
+}
+
+export function runSubmissionReview(payload: RunSubmissionReviewRequest): Promise<RunSubmissionReviewResponse> {
+  return apiRequest<RunSubmissionReviewResponse>("/api/v1/reviews/run", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getStudentMemory(studentId: string): Promise<StudentMemoryResponse> {
+  return apiRequest<StudentMemoryResponse>(`/api/v1/students/${studentId}/memory`, {
+    method: "GET"
+  });
 }

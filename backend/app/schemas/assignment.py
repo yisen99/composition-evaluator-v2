@@ -34,6 +34,10 @@ class AssignmentSubmissionItem(BaseModel):
     created_at: datetime
     file_url: str | None = None
     text_excerpt: str | None = None
+    latest_agent_name: str | None = None
+    latest_review_score: int | None = None
+    latest_review_feedback: str | None = None
+    latest_memory_note: str | None = None
 
 
 class AssignmentDetailResponse(BaseModel):

@@ -3,9 +3,14 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { getAssignmentDetail } from "@/lib/api/client";
+import { getAssignmentDetail, getStudentMemory, runSubmissionReview } from "@/lib/api/client";
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
-import type { AssignmentDetailResponse, UserProfile } from "@/lib/api/types";
+import type {
+  AssignmentDetailResponse,
+  ReviewAgentName,
+  StudentMemoryResponse,
+  UserProfile
+} from "@/lib/api/types";
 
 export default function TeacherAssignmentDetailPage() {
   const params = useParams<{ assignmentId: string }>();
@@ -18,6 +23,12 @@ export default function TeacherAssignmentDetailPage() {
   const [detail, setDetail] = useState<AssignmentDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [agentBySubmission, setAgentBySubmission] = useState<Record<string, ReviewAgentName>>({});
+  const [reviewingSubmissionId, setReviewingSubmissionId] = useState("");
+  const [memoryLoadingStudentId, setMemoryLoadingStudentId] = useState("");
+  const [selectedMemoryStudentId, setSelectedMemoryStudentId] = useState("");
+  const [memoryData, setMemoryData] = useState<StudentMemoryResponse | null>(null);
+  const [toast, setToast] = useState<{ type: "ok" | "error"; message: string } | null>(null);
 
   useEffect(() => {
     const session = getAuthSession();
@@ -52,6 +63,49 @@ export default function TeacherAssignmentDetailPage() {
       cancelled = true;
     };
   }, [assignmentId, currentUser]);
+
+  const loadDetail = async () => {
+    if (!assignmentId) {
+      return;
+    }
+    const payload = await getAssignmentDetail(assignmentId);
+    setDetail(payload);
+  };
+
+  const runReview = async (submissionId: string) => {
+    const agentName = agentBySubmission[submissionId] ?? "value";
+    setReviewingSubmissionId(submissionId);
+    setToast(null);
+    try {
+      const response = await runSubmissionReview({
+        submission_id: submissionId,
+        agent_name: agentName
+      });
+      await loadDetail();
+      setToast({
+        type: "ok",
+        message: `批改完成：${response.agent_name} · 得分 ${response.score}（review: ${response.review_id}）`
+      });
+    } catch (reviewError) {
+      setToast({ type: "error", message: `批改失败：${(reviewError as Error).message}` });
+    } finally {
+      setReviewingSubmissionId("");
+    }
+  };
+
+  const loadStudentMemory = async (studentId: string) => {
+    setMemoryLoadingStudentId(studentId);
+    setToast(null);
+    try {
+      const response = await getStudentMemory(studentId);
+      setSelectedMemoryStudentId(studentId);
+      setMemoryData(response);
+    } catch (memoryError) {
+      setToast({ type: "error", message: `记忆加载失败：${(memoryError as Error).message}` });
+    } finally {
+      setMemoryLoadingStudentId("");
+    }
+  };
 
   if (!currentUser || currentUser.role !== "teacher") {
     return (
@@ -105,6 +159,17 @@ export default function TeacherAssignmentDetailPage() {
               加载失败：{error}
             </div>
           ) : null}
+          {toast ? (
+            <div
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                toast.type === "ok"
+                  ? "border-emerald-700/35 bg-emerald-50 text-emerald-900"
+                  : "border-rose-700/35 bg-rose-50 text-rose-900"
+              }`}
+            >
+              {toast.message}
+            </div>
+          ) : null}
 
           {detail ? (
             <>
@@ -136,6 +201,15 @@ export default function TeacherAssignmentDetailPage() {
                           {submission.student_name} · {submission.content_type}
                         </p>
                         <p className="text-xs text-slate-600">Submission ID: {submission.submission_id}</p>
+                        {submission.latest_review_score !== null && submission.latest_review_score !== undefined ? (
+                          <div className="mt-2 rounded-md border border-emerald-700/25 bg-emerald-50 px-2 py-2 text-xs text-emerald-900">
+                            <p>
+                              最近批改：{submission.latest_agent_name} · 得分 {submission.latest_review_score}
+                            </p>
+                            {submission.latest_review_feedback ? <p className="mt-1">{submission.latest_review_feedback}</p> : null}
+                            {submission.latest_memory_note ? <p className="mt-1">长期记忆：{submission.latest_memory_note}</p> : null}
+                          </div>
+                        ) : null}
                         {submission.text_excerpt ? <p className="mt-2">{submission.text_excerpt}</p> : null}
                         {submission.file_url ? (
                           <p className="mt-2 text-xs">
@@ -145,6 +219,66 @@ export default function TeacherAssignmentDetailPage() {
                             </a>
                           </p>
                         ) : null}
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <select
+                            className="field w-44 text-xs"
+                            value={agentBySubmission[submission.submission_id] ?? "value"}
+                            onChange={(event) =>
+                              setAgentBySubmission((prev) => ({
+                                ...prev,
+                                [submission.submission_id]: event.target.value as ReviewAgentName
+                              }))
+                            }
+                          >
+                            <option value="value">立意 Agent</option>
+                            <option value="structure">结构 Agent</option>
+                            <option value="language">语言 Agent</option>
+                          </select>
+                          <button
+                            className="btn-ink px-3 py-1 text-xs"
+                            onClick={() => {
+                              void runReview(submission.submission_id);
+                            }}
+                            type="button"
+                            disabled={reviewingSubmissionId === submission.submission_id}
+                          >
+                            {reviewingSubmissionId === submission.submission_id ? "批改中..." : "调用 Agent 批改"}
+                          </button>
+                          <button
+                            className="btn-seal px-3 py-1 text-xs"
+                            onClick={() => {
+                              void loadStudentMemory(submission.student_id);
+                            }}
+                            type="button"
+                            disabled={memoryLoadingStudentId === submission.student_id}
+                          >
+                            {memoryLoadingStudentId === submission.student_id ? "加载中..." : "查看长期记忆"}
+                          </button>
+                        </div>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+
+              <div className="paper-card p-5">
+                <p className="label">学生长期记忆面板</p>
+                <p className="mt-2 text-sm text-slate-700">
+                  当前学生：{selectedMemoryStudentId || "未选择"} {memoryData ? `· 共 ${memoryData.total} 条` : ""}
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {!memoryData || memoryData.items.length === 0 ? (
+                    <li className="text-sm text-slate-600">请选择学生查看，或先运行一次 Agent 批改生成记忆。</li>
+                  ) : (
+                    memoryData.items.map((item) => (
+                      <li
+                        key={item.note_id}
+                        className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-3 text-sm text-slate-800"
+                      >
+                        <p className="font-semibold">{item.agent_name}</p>
+                        <p className="text-xs text-slate-600">note: {item.note_id}</p>
+                        <p className="mt-1">{item.note}</p>
+                        <p className="mt-1 text-xs text-slate-600">{item.tags}</p>
                       </li>
                     ))
                   )}

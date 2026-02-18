@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps.auth import get_current_user, require_teacher
 from app.db.deps import get_db
-from app.models import Assignment, ClassMember, ClassRoom, Submission, User
+from app.models import Assignment, ClassMember, ClassRoom, StudentMemoryNote, Submission, SubmissionReview, User
 from app.schemas.assignment import (
     AssignmentDetailResponse,
     AssignmentListItem,
@@ -110,8 +110,15 @@ def get_assignment_detail(
             created_at=submission.created_at,
             file_url=submission.file_url,
             text_excerpt=(submission.text_content[:120] if submission.text_content else None),
+            latest_agent_name=latest_review.agent_name if latest_review else None,
+            latest_review_score=latest_review.score if latest_review else None,
+            latest_review_feedback=latest_review.feedback if latest_review else None,
+            latest_memory_note=latest_memory_note,
         )
         for submission, student_name in rows
+        for latest_review, latest_memory_note in [  # keep single-pass mapping readable without extra helper
+            _load_latest_review_and_note(db, submission.id)
+        ]
     ]
 
     return AssignmentDetailResponse(
@@ -126,3 +133,22 @@ def get_assignment_detail(
         submissions_count=len(submissions),
         submissions=submissions,
     )
+
+
+def _load_latest_review_and_note(db: Session, submission_id: str) -> tuple[SubmissionReview | None, str | None]:
+    latest_review = db.scalar(
+        select(SubmissionReview)
+        .where(SubmissionReview.submission_id == submission_id)
+        .order_by(SubmissionReview.created_at.desc())
+        .limit(1)
+    )
+    if not latest_review:
+        return None, None
+
+    latest_note = db.scalar(
+        select(StudentMemoryNote)
+        .where(StudentMemoryNote.source_review_id == latest_review.id)
+        .order_by(StudentMemoryNote.created_at.desc())
+        .limit(1)
+    )
+    return latest_review, (latest_note.note if latest_note else None)

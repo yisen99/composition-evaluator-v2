@@ -6,9 +6,11 @@ import {
   createAssignment,
   createClass,
   getAssignmentDetail,
+  getStudentMemory,
   joinClass,
   listAssignments,
-  listClasses
+  listClasses,
+  runSubmissionReview
 } from "@/lib/api/client";
 
 describe("frontend smoke", () => {
@@ -252,6 +254,89 @@ describe("frontend smoke", () => {
       expect.objectContaining({
         method: "POST",
         body: expect.any(FormData)
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("runs submission review via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          review_id: "review-1",
+          submission_id: "sub-1",
+          assignment_id: "asg-1",
+          class_id: "class-1",
+          student_id: "student-1",
+          teacher_id: "teacher-1",
+          agent_name: "value",
+          score: 87,
+          feedback: "立意评审建议补充具体事例。",
+          memory_note_id: "note-1",
+          status: "completed",
+          created_at: "2026-02-18T02:30:00Z"
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await runSubmissionReview({
+      submission_id: "sub-1",
+      agent_name: "value"
+    });
+
+    expect(data.review_id).toBe("review-1");
+    expect(data.score).toBe(87);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/reviews/run",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          submission_id: "sub-1",
+          agent_name: "value"
+        })
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("gets student memory via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          student_id: "student-1",
+          total: 1,
+          items: [
+            {
+              note_id: "note-1",
+              student_id: "student-1",
+              teacher_id: "teacher-1",
+              class_id: "class-1",
+              source_submission_id: "sub-1",
+              source_review_id: "review-1",
+              agent_name: "value",
+              note: "立意基础良好，建议补强事例。",
+              tags: "agent:value,score:87",
+              status: "active",
+              created_at: "2026-02-18T02:30:00Z"
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await getStudentMemory("student-1");
+    expect(data.total).toBe(1);
+    expect(data.items[0].note_id).toBe("note-1");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/students/student-1/memory",
+      expect.objectContaining({
+        method: "GET"
       })
     );
 
