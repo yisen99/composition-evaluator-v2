@@ -16,16 +16,44 @@ export default function HomePage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
-      <h1 className="text-3xl font-bold">作文批改平台骨架</h1>
-      <p>当前状态：{status}</p>
-      <div className="flex gap-3">
-        <button className="rounded bg-blue-600 px-4 py-2 text-white" onClick={onCheckHealth}>
-          检查后端健康状态
-        </button>
-        <a href="/login" className="rounded border px-4 py-2">
-          前往登录
-        </a>
+    <main className="mx-auto min-h-screen max-w-5xl p-6 md:p-10">
+      <section className="poster-shell p-6 md:p-10">
+        <div className="relative z-10 flex flex-col gap-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="seal-chip">语文写作 · 学院海报风</span>
+            <button className="btn-ink text-sm" onClick={onCheckHealth}>
+              后端状态：{status}
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <h1 className="poster-title text-4xl font-bold md:text-5xl">作文批改协同台</h1>
+            <p className="max-w-2xl text-base text-slate-700 md:text-lg">
+              老师发布任务、学生提交作文、AI 辅助批改与长期成长记录，一体化联调入口。
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <a className="paper-card p-5" href="/teacher">
+              <p className="label">Teacher</p>
+              <h2 className="mt-2 text-2xl font-semibold">建班与发布任务</h2>
+              <p className="mt-2 text-sm text-slate-700">创建班级、生成班级码、发布作文任务。</p>
+            </a>
+            <a className="paper-card p-5" href="/student">
+              <p className="label">Student</p>
+              <h2 className="mt-2 text-2xl font-semibold">输入班级码加入</h2>
+              <p className="mt-2 text-sm text-slate-700">学生输入班级码，完成加入班级联调验证。</p>
+            </a>
+            <a className="paper-card p-5" href="/login">
+              <p className="label">Auth</p>
+              <h2 className="mt-2 text-2xl font-semibold">登录占位页</h2>
+              <p className="mt-2 text-sm text-slate-700">预留短信验证码登录入口与角色切换。</p>
+            </a>
+          </div>
+        </div>
+      </section>
+      <div className="mx-auto mt-6 max-w-3xl text-center text-xs text-slate-600">
+        先完成“建班 / 加班 / 发布任务”联调，后续再接入真实登录态。
       </div>
     </main>
   );

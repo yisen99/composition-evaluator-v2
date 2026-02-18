@@ -1,5 +1,11 @@
 import type {
+  CreateAssignmentRequest,
+  CreateAssignmentResponse,
+  CreateClassRequest,
+  CreateClassResponse,
   HealthResponse,
+  JoinClassRequest,
+  JoinClassResponse,
   LoginRequest,
   LoginResponse,
   SendCodeRequest,
@@ -41,6 +47,27 @@ export function sendCode(payload: SendCodeRequest): Promise<SendCodeResponse> {
 
 export function login(payload: LoginRequest): Promise<LoginResponse> {
   return apiRequest<LoginResponse>("/api/v1/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function createClass(payload: CreateClassRequest): Promise<CreateClassResponse> {
+  return apiRequest<CreateClassResponse>("/api/v1/classes", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function joinClass(payload: JoinClassRequest): Promise<JoinClassResponse> {
+  return apiRequest<JoinClassResponse>("/api/v1/classes/join", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function createAssignment(payload: CreateAssignmentRequest): Promise<CreateAssignmentResponse> {
+  return apiRequest<CreateAssignmentResponse>("/api/v1/assignments", {
     method: "POST",
     body: JSON.stringify(payload)
   });
