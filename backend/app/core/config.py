@@ -12,6 +12,8 @@ class Settings(BaseModel):
     refresh_token_expire_minutes: int = 60 * 24 * 7
     auth_code_expire_seconds: int = 300
     auth_fixed_code: str | None = "123456"
+    storage_root: str = "./storage/uploads"
+    storage_public_base_url: str = "/storage/uploads"
 
 
 settings = Settings(
@@ -23,4 +25,6 @@ settings = Settings(
     refresh_token_expire_minutes=int(os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 7))),
     auth_code_expire_seconds=int(os.getenv("AUTH_CODE_EXPIRE_SECONDS", "300")),
     auth_fixed_code=os.getenv("AUTH_FIXED_CODE", "123456"),
+    storage_root=os.getenv("STORAGE_ROOT", "./storage/uploads"),
+    storage_public_base_url=os.getenv("STORAGE_PUBLIC_BASE_URL", "/storage/uploads"),
 )

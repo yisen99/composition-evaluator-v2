@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { createAssignment, createClass, listAssignments, listClasses } from "@/lib/api/client";
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
@@ -297,6 +298,12 @@ export default function TeacherPage() {
                         <p className="text-sm font-semibold text-slate-900">{assignment.title}</p>
                         <p>任务ID：{assignment.assignment_id}</p>
                         <p>班级ID：{assignment.class_id}</p>
+                        <Link
+                          className="mt-1 inline-block text-xs underline"
+                          href={`/teacher/assignments/${assignment.assignment_id}`}
+                        >
+                          查看任务详情
+                        </Link>
                       </li>
                     ))
                   )}

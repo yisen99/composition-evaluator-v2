@@ -6,8 +6,14 @@ from sqlalchemy.orm import Session
 
 from app.api.deps.auth import get_current_user, require_teacher
 from app.db.deps import get_db
-from app.models import Assignment, ClassMember, ClassRoom, User
-from app.schemas.assignment import AssignmentListItem, CreateAssignmentRequest, CreateAssignmentResponse
+from app.models import Assignment, ClassMember, ClassRoom, Submission, User
+from app.schemas.assignment import (
+    AssignmentDetailResponse,
+    AssignmentListItem,
+    AssignmentSubmissionItem,
+    CreateAssignmentRequest,
+    CreateAssignmentResponse,
+)
 
 router = APIRouter()
 
@@ -74,3 +80,49 @@ def list_assignments(
         )
         for assignment in assignments
     ]
+
+
+@router.get("/{assignment_id}", response_model=AssignmentDetailResponse)
+def get_assignment_detail(
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(require_teacher),
+) -> AssignmentDetailResponse:
+    assignment = db.get(Assignment, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    if assignment.teacher_id != current_teacher.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher does not own this assignment")
+
+    rows = db.execute(
+        select(Submission, User.display_name)
+        .join(User, User.id == Submission.student_id)
+        .where(Submission.assignment_id == assignment.id)
+        .order_by(Submission.created_at.desc())
+    ).all()
+    submissions = [
+        AssignmentSubmissionItem(
+            submission_id=submission.id,
+            student_id=submission.student_id,
+            student_name=student_name,
+            content_type=submission.content_type,
+            status=submission.status,
+            created_at=submission.created_at,
+            file_url=submission.file_url,
+            text_excerpt=(submission.text_content[:120] if submission.text_content else None),
+        )
+        for submission, student_name in rows
+    ]
+
+    return AssignmentDetailResponse(
+        assignment_id=assignment.id,
+        class_id=assignment.class_id,
+        teacher_id=assignment.teacher_id,
+        title=assignment.title,
+        prompt=assignment.prompt,
+        due_at=assignment.due_at,
+        status=assignment.status,
+        created_at=assignment.created_at,
+        submissions_count=len(submissions),
+        submissions=submissions,
+    )

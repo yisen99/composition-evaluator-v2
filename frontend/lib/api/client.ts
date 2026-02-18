@@ -1,6 +1,9 @@
 import type {
+  AssignmentDetailResponse,
   AssignmentListItem,
   ClassListItem,
+  CreateCompositionSubmissionRequest,
+  CreateCompositionSubmissionResponse,
   CreateAssignmentRequest,
   CreateAssignmentResponse,
   CreateClassRequest,
@@ -36,6 +39,26 @@ async function apiRequest<T>(path: string, init?: RequestInit, withAuth = true):
   const response = await fetch(buildApiPath(path), {
     ...init,
     headers
+  });
+
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+async function apiFormRequest<T>(path: string, formData: FormData): Promise<T> {
+  const authToken = getAccessToken();
+  const headers: Record<string, string> = {};
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(buildApiPath(path), {
+    method: "POST",
+    headers,
+    body: formData
   });
 
   if (!response.ok) {
@@ -94,4 +117,25 @@ export function listAssignments(): Promise<AssignmentListItem[]> {
   return apiRequest<AssignmentListItem[]>("/api/v1/assignments", {
     method: "GET"
   });
+}
+
+export function getAssignmentDetail(assignmentId: string): Promise<AssignmentDetailResponse> {
+  return apiRequest<AssignmentDetailResponse>(`/api/v1/assignments/${assignmentId}`, {
+    method: "GET"
+  });
+}
+
+export function createCompositionSubmission(
+  payload: CreateCompositionSubmissionRequest
+): Promise<CreateCompositionSubmissionResponse> {
+  const formData = new FormData();
+  formData.append("assignment_id", payload.assignment_id);
+  formData.append("content_type", payload.content_type);
+  if (payload.text_content) {
+    formData.append("text_content", payload.text_content);
+  }
+  if (payload.file) {
+    formData.append("file", payload.file);
+  }
+  return apiFormRequest<CreateCompositionSubmissionResponse>("/api/v1/submissions", formData);
 }

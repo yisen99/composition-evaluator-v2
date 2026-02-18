@@ -82,3 +82,47 @@ export type AssignmentListItem = {
   due_at?: string | null;
   status: string;
 };
+
+export type SubmissionContentType = "text" | "image" | "document";
+
+export type AssignmentSubmissionItem = {
+  submission_id: string;
+  student_id: string;
+  student_name: string;
+  content_type: SubmissionContentType;
+  status: string;
+  created_at: string;
+  file_url?: string | null;
+  text_excerpt?: string | null;
+};
+
+export type AssignmentDetailResponse = {
+  assignment_id: string;
+  class_id: string;
+  teacher_id: string;
+  title: string;
+  prompt: string;
+  due_at?: string | null;
+  status: string;
+  created_at: string;
+  submissions_count: number;
+  submissions: AssignmentSubmissionItem[];
+};
+
+export type CreateCompositionSubmissionRequest = {
+  assignment_id: string;
+  content_type: SubmissionContentType;
+  text_content?: string;
+  file?: File;
+};
+
+export type CreateCompositionSubmissionResponse = {
+  submission_id: string;
+  assignment_id: string;
+  class_id: string;
+  student_id: string;
+  content_type: SubmissionContentType;
+  file_url?: string | null;
+  status: string;
+  created_at: string;
+};

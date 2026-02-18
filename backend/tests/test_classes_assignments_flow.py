@@ -196,3 +196,151 @@ def test_teacher_can_list_classes_and_assignments() -> None:
     assert assignments_response.status_code == 200
     assignment_ids = [item["assignment_id"] for item in assignments_response.json()]
     assert assignment_payload["assignment_id"] in assignment_ids
+
+
+def test_student_can_list_joined_classes_and_assignments() -> None:
+    with TestClient(app) as client:
+        teacher_token, _ = _login(
+            client,
+            phone=_phone(f"teacher-student-list-{time.time_ns()}"),
+            role="teacher",
+            display_name="周老师",
+        )
+        student_token, _ = _login(
+            client,
+            phone=_phone(f"student-list-{time.time_ns()}"),
+            role="student",
+            display_name="小刚",
+        )
+
+        class_response = client.post(
+            "/api/v1/classes",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={"name": "七年级一班", "grade_band": "junior"},
+        )
+        assert class_response.status_code == 201
+        class_payload = class_response.json()
+
+        publish_response = client.post(
+            "/api/v1/assignments",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={
+                "class_id": class_payload["class_id"],
+                "title": "我最敬佩的人",
+                "prompt": "写一个你最敬佩的人，说明理由。",
+                "due_at": "2026-03-20T18:00:00",
+            },
+        )
+        assert publish_response.status_code == 201
+        assignment_payload = publish_response.json()
+
+        join_response = client.post(
+            "/api/v1/classes/join",
+            headers={"Authorization": f"Bearer {student_token}"},
+            json={"join_code": class_payload["join_code"], "student_name": "小刚"},
+        )
+        assert join_response.status_code == 200
+
+        student_classes_response = client.get(
+            "/api/v1/classes",
+            headers={"Authorization": f"Bearer {student_token}"},
+        )
+        student_assignments_response = client.get(
+            "/api/v1/assignments",
+            headers={"Authorization": f"Bearer {student_token}"},
+        )
+
+    assert student_classes_response.status_code == 200
+    student_class_ids = [item["class_id"] for item in student_classes_response.json()]
+    assert class_payload["class_id"] in student_class_ids
+
+    assert student_assignments_response.status_code == 200
+    student_assignment_ids = [item["assignment_id"] for item in student_assignments_response.json()]
+    assert assignment_payload["assignment_id"] in student_assignment_ids
+
+
+def test_student_can_submit_composition_and_teacher_can_view_assignment_detail() -> None:
+    with TestClient(app) as client:
+        teacher_token, teacher_user = _login(
+            client,
+            phone=_phone(f"teacher-detail-{time.time_ns()}"),
+            role="teacher",
+            display_name="陈老师",
+        )
+        student_token, student_user = _login(
+            client,
+            phone=_phone(f"student-submit-{time.time_ns()}"),
+            role="student",
+            display_name="小雨",
+        )
+
+        class_response = client.post(
+            "/api/v1/classes",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={"name": "五年级一班", "grade_band": "primary"},
+        )
+        class_payload = class_response.json()
+
+        assignment_response = client.post(
+            "/api/v1/assignments",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={
+                "class_id": class_payload["class_id"],
+                "title": "春天的脚步",
+                "prompt": "观察春天变化，写一篇记叙文。",
+                "due_at": "2026-03-28T20:00:00",
+            },
+        )
+        assignment_payload = assignment_response.json()
+
+        join_response = client.post(
+            "/api/v1/classes/join",
+            headers={"Authorization": f"Bearer {student_token}"},
+            json={"join_code": class_payload["join_code"], "student_name": "小雨"},
+        )
+        assert join_response.status_code == 200
+
+        submit_text_response = client.post(
+            "/api/v1/submissions",
+            headers={"Authorization": f"Bearer {student_token}"},
+            data={
+                "assignment_id": assignment_payload["assignment_id"],
+                "content_type": "text",
+                "text_content": "今天我在校园里看到了第一朵迎春花，风也变得温柔起来。",
+            },
+        )
+        assert submit_text_response.status_code == 201
+        submit_text_payload = submit_text_response.json()
+
+        submit_file_response = client.post(
+            "/api/v1/submissions",
+            headers={"Authorization": f"Bearer {student_token}"},
+            data={
+                "assignment_id": assignment_payload["assignment_id"],
+                "content_type": "document",
+            },
+            files={"file": ("zuowen.docx", b"mock-binary-content", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        )
+        assert submit_file_response.status_code == 201
+        submit_file_payload = submit_file_response.json()
+
+        detail_response = client.get(
+            f"/api/v1/assignments/{assignment_payload['assignment_id']}",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+        )
+
+    assert submit_text_payload["assignment_id"] == assignment_payload["assignment_id"]
+    assert submit_text_payload["content_type"] == "text"
+    assert submit_text_payload["status"] == "submitted"
+
+    assert submit_file_payload["content_type"] == "document"
+    assert submit_file_payload["file_url"]
+
+    assert detail_response.status_code == 200
+    detail_payload = detail_response.json()
+    assert detail_payload["assignment_id"] == assignment_payload["assignment_id"]
+    assert detail_payload["teacher_id"] == teacher_user["id"]
+    assert detail_payload["submissions_count"] == 2
+    assert len(detail_payload["submissions"]) == 2
+    student_ids = [item["student_id"] for item in detail_payload["submissions"]]
+    assert student_user["id"] in student_ids

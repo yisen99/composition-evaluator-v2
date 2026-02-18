@@ -11,10 +11,13 @@ async function proxy(request: NextRequest, pathSegments: string[]): Promise<Next
   const headers = new Headers(request.headers);
   headers.delete("host");
 
+  const requestBody =
+    request.method === "GET" || request.method === "HEAD" ? undefined : new Uint8Array(await request.arrayBuffer());
+
   const init: RequestInit = {
     method: request.method,
     headers,
-    body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text()
+    body: requestBody
   };
 
   const response = await fetch(targetUrl, init);
@@ -39,5 +42,17 @@ export async function GET(request: NextRequest, context: RouteContext): Promise<
 }
 
 export async function POST(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  return proxy(request, context.params.path);
+}
+
+export async function PUT(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  return proxy(request, context.params.path);
+}
+
+export async function PATCH(request: NextRequest, context: RouteContext): Promise<NextResponse> {
+  return proxy(request, context.params.path);
+}
+
+export async function DELETE(request: NextRequest, context: RouteContext): Promise<NextResponse> {
   return proxy(request, context.params.path);
 }

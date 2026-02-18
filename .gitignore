@@ -22,6 +22,8 @@ coverage/
 # Build
 dist/
 build/
+storage/uploads/
+backend/storage/uploads/
 
 # IDE
 .vscode/

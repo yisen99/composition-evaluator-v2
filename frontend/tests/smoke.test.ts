@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildApiPath,
   checkHealth,
+  createCompositionSubmission,
   createAssignment,
   createClass,
+  getAssignmentDetail,
   joinClass,
   listAssignments,
   listClasses
@@ -171,6 +173,85 @@ describe("frontend smoke", () => {
       "/api/backend/api/v1/assignments",
       expect.objectContaining({
         method: "GET"
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("gets assignment detail via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          assignment_id: "asg-1",
+          class_id: "class-1",
+          teacher_id: "teacher-1",
+          title: "我的家乡",
+          prompt: "请写一篇介绍家乡景色与人情的作文。",
+          due_at: "2026-03-01T23:59:59",
+          status: "published",
+          created_at: "2026-02-18T00:00:00Z",
+          submissions_count: 1,
+          submissions: [
+            {
+              submission_id: "sub-1",
+              student_id: "student-1",
+              student_name: "小明",
+              content_type: "text",
+              status: "submitted",
+              created_at: "2026-02-18T01:00:00Z",
+              text_excerpt: "今天我在校园里看到了第一朵迎春花。"
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await getAssignmentDetail("asg-1");
+
+    expect(data.assignment_id).toBe("asg-1");
+    expect(data.submissions_count).toBe(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/assignments/asg-1",
+      expect.objectContaining({
+        method: "GET"
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("submits composition with form data via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          submission_id: "sub-1",
+          assignment_id: "asg-1",
+          class_id: "class-1",
+          student_id: "student-1",
+          content_type: "text",
+          status: "submitted",
+          created_at: "2026-02-18T02:00:00Z"
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await createCompositionSubmission({
+      assignment_id: "asg-1",
+      content_type: "text",
+      text_content: "今天我在校园里看到了第一朵迎春花。"
+    });
+
+    expect(data.submission_id).toBe("sub-1");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/submissions",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.any(FormData)
       })
     );
 
