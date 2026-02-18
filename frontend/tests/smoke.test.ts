@@ -43,8 +43,6 @@ describe("frontend smoke", () => {
     vi.stubGlobal("fetch", mockFetch);
 
     const payload = {
-      teacher_id: "teacher-1",
-      teacher_name: "王老师",
       name: "三年级一班",
       grade_band: "primary" as const
     };
@@ -73,7 +71,6 @@ describe("frontend smoke", () => {
     vi.stubGlobal("fetch", mockFetch);
 
     const payload = {
-      student_id: "student-1",
       student_name: "小明",
       join_code: "ABC123"
     };
@@ -103,7 +100,6 @@ describe("frontend smoke", () => {
 
     const payload = {
       class_id: "class-1",
-      teacher_id: "teacher-1",
       title: "我的家乡",
       prompt: "请写一篇介绍家乡景色与人情的作文。",
       due_at: "2026-03-01T23:59:59"

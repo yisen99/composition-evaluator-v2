@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps.auth import require_student, require_teacher
 from app.db.deps import get_db
 from app.models import ClassMember, ClassRoom, User
 from app.schemas.classroom import CreateClassRequest, CreateClassResponse, JoinClassRequest, JoinClassResponse
@@ -31,23 +32,14 @@ def _generate_unique_join_code(db: Session) -> str:
 
 
 @router.post("", response_model=CreateClassResponse, status_code=status.HTTP_201_CREATED)
-def create_class(payload: CreateClassRequest, db: Session = Depends(get_db)) -> CreateClassResponse:
-    teacher = db.get(User, payload.teacher_id)
-    if teacher and teacher.role != "teacher":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User role is not teacher")
-
-    if not teacher:
-        teacher = User(
-            id=payload.teacher_id,
-            role="teacher",
-            display_name=payload.teacher_name,
-        )
-        db.add(teacher)
-        db.flush()
-
+def create_class(
+    payload: CreateClassRequest,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(require_teacher),
+) -> CreateClassResponse:
     classroom = ClassRoom(
         id=str(uuid4()),
-        teacher_id=teacher.id,
+        teacher_id=current_teacher.id,
         name=payload.name,
         grade_band=payload.grade_band,
         join_code=_generate_unique_join_code(db),
@@ -60,28 +52,22 @@ def create_class(payload: CreateClassRequest, db: Session = Depends(get_db)) -> 
 
 
 @router.post("/join", response_model=JoinClassResponse)
-def join_class(payload: JoinClassRequest, db: Session = Depends(get_db)) -> JoinClassResponse:
+def join_class(
+    payload: JoinClassRequest,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(require_student),
+) -> JoinClassResponse:
     classroom = db.scalar(select(ClassRoom).where(ClassRoom.join_code == payload.join_code))
     if not classroom:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Class not found")
 
-    student = db.get(User, payload.student_id)
-    if student and student.role != "student":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User role is not student")
-
-    if not student:
-        student = User(
-            id=payload.student_id,
-            role="student",
-            display_name=payload.student_name,
-        )
-        db.add(student)
-        db.flush()
+    if payload.student_name:
+        current_student.display_name = payload.student_name
 
     membership = db.scalar(
         select(ClassMember).where(
             ClassMember.class_id == classroom.id,
-            ClassMember.student_id == payload.student_id,
+            ClassMember.student_id == current_student.id,
         )
     )
     if not membership:
@@ -89,7 +75,7 @@ def join_class(payload: JoinClassRequest, db: Session = Depends(get_db)) -> Join
             ClassMember(
                 id=str(uuid4()),
                 class_id=classroom.id,
-                student_id=payload.student_id,
+                student_id=current_student.id,
             )
         )
     db.commit()

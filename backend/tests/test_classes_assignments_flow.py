@@ -1,17 +1,51 @@
-from uuid import uuid4
+import time
 
 from fastapi.testclient import TestClient
 
 from app.main import app
 
 
+def _phone(seed: str) -> str:
+    suffix = str(abs(hash(seed)) % 100_000_000).zfill(8)
+    return f"138{suffix}"
+
+
+def _login(
+    client: TestClient,
+    *,
+    phone: str,
+    role: str,
+    display_name: str,
+) -> tuple[str, dict]:
+    send_code_response = client.post(
+        "/api/v1/auth/send-code",
+        json={"phone": phone, "role_hint": role},
+    )
+    assert send_code_response.status_code == 200
+
+    login_response = client.post(
+        "/api/v1/auth/login",
+        json={"phone": phone, "code": "123456", "display_name": display_name},
+    )
+    assert login_response.status_code == 200
+    payload = login_response.json()
+    token = payload["access_token"]
+    return token, payload["user"]
+
+
 def test_teacher_can_create_class_and_receive_join_code() -> None:
     with TestClient(app) as client:
+        teacher_token, _ = _login(
+            client,
+            phone=_phone(f"teacher-create-{time.time_ns()}"),
+            role="teacher",
+            display_name="王老师",
+        )
+
         response = client.post(
             "/api/v1/classes",
+            headers={"Authorization": f"Bearer {teacher_token}"},
             json={
-                "teacher_id": str(uuid4()),
-                "teacher_name": "王老师",
                 "name": "三年级一班",
                 "grade_band": "primary",
             },
@@ -24,14 +58,24 @@ def test_teacher_can_create_class_and_receive_join_code() -> None:
 
 
 def test_student_can_join_class_with_join_code() -> None:
-    teacher_id = str(uuid4())
-
     with TestClient(app) as client:
+        teacher_token, _ = _login(
+            client,
+            phone=_phone(f"teacher-join-{time.time_ns()}"),
+            role="teacher",
+            display_name="张老师",
+        )
+        student_token, _ = _login(
+            client,
+            phone=_phone(f"student-join-{time.time_ns()}"),
+            role="student",
+            display_name="小明",
+        )
+
         create_response = client.post(
             "/api/v1/classes",
+            headers={"Authorization": f"Bearer {teacher_token}"},
             json={
-                "teacher_id": teacher_id,
-                "teacher_name": "张老师",
                 "name": "四年级二班",
                 "grade_band": "primary",
             },
@@ -40,9 +84,9 @@ def test_student_can_join_class_with_join_code() -> None:
 
         join_response = client.post(
             "/api/v1/classes/join",
+            headers={"Authorization": f"Bearer {student_token}"},
             json={
                 "join_code": class_payload["join_code"],
-                "student_id": str(uuid4()),
                 "student_name": "小明",
             },
         )
@@ -54,14 +98,18 @@ def test_student_can_join_class_with_join_code() -> None:
 
 
 def test_teacher_can_publish_assignment_for_owned_class() -> None:
-    teacher_id = str(uuid4())
-
     with TestClient(app) as client:
+        teacher_token, _ = _login(
+            client,
+            phone=_phone(f"teacher-assignment-{time.time_ns()}"),
+            role="teacher",
+            display_name="李老师",
+        )
+
         class_response = client.post(
             "/api/v1/classes",
+            headers={"Authorization": f"Bearer {teacher_token}"},
             json={
-                "teacher_id": teacher_id,
-                "teacher_name": "李老师",
                 "name": "五年级三班",
                 "grade_band": "primary",
             },
@@ -70,9 +118,9 @@ def test_teacher_can_publish_assignment_for_owned_class() -> None:
 
         assignment_response = client.post(
             "/api/v1/assignments",
+            headers={"Authorization": f"Bearer {teacher_token}"},
             json={
                 "class_id": class_payload["class_id"],
-                "teacher_id": teacher_id,
                 "title": "我的家乡",
                 "prompt": "请写一篇介绍家乡景色与人情的作文，600字左右。",
                 "due_at": "2026-03-01T23:59:59",
@@ -83,3 +131,21 @@ def test_teacher_can_publish_assignment_for_owned_class() -> None:
     assignment_payload = assignment_response.json()
     assert assignment_payload["class_id"] == class_payload["class_id"]
     assert assignment_payload["status"] == "published"
+
+
+def test_role_guard_blocks_student_from_creating_class() -> None:
+    with TestClient(app) as client:
+        student_token, _ = _login(
+            client,
+            phone=_phone(f"student-guard-{time.time_ns()}"),
+            role="student",
+            display_name="小红",
+        )
+        create_response = client.post(
+            "/api/v1/classes",
+            headers={"Authorization": f"Bearer {student_token}"},
+            json={"name": "错误班级", "grade_band": "primary"},
+        )
+
+    assert create_response.status_code == 403
+    assert create_response.json()["detail"] == "Teacher role required"

@@ -1,24 +1,17 @@
 "use client";
 
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { createAssignment, createClass } from "@/lib/api/client";
-import type { CreateClassResponse, GradeBand } from "@/lib/api/types";
+import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
+import type { CreateClassResponse, GradeBand, UserProfile } from "@/lib/api/types";
 
 type Toast = {
   type: "ok" | "error";
   message: string;
 };
 
-function makeId(prefix: string): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
-  }
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
 export default function TeacherPage() {
-  const [teacherId, setTeacherId] = useState(() => makeId("teacher"));
-  const [teacherName, setTeacherName] = useState("王老师");
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [className, setClassName] = useState("三年级一班");
   const [gradeBand, setGradeBand] = useState<GradeBand>("primary");
   const [classroomList, setClassroomList] = useState<Array<CreateClassResponse & { name: string }>>([]);
@@ -32,6 +25,11 @@ export default function TeacherPage() {
   const [busy, setBusy] = useState<"class" | "assignment" | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
 
+  useEffect(() => {
+    const session = getAuthSession();
+    setCurrentUser(session?.user ?? null);
+  }, []);
+
   const selectedClassName = useMemo(
     () => classroomList.find((item) => item.class_id === selectedClassId)?.name ?? "",
     [classroomList, selectedClassId]
@@ -43,8 +41,6 @@ export default function TeacherPage() {
     setToast(null);
     try {
       const created = await createClass({
-        teacher_id: teacherId.trim(),
-        teacher_name: teacherName.trim(),
         name: className.trim(),
         grade_band: gradeBand
       });
@@ -70,7 +66,6 @@ export default function TeacherPage() {
     try {
       const payload = {
         class_id: selectedClassId,
-        teacher_id: teacherId.trim(),
         title: assignmentTitle.trim(),
         prompt: assignmentPrompt.trim(),
         due_at: dueAt ? new Date(dueAt).toISOString() : undefined
@@ -85,15 +80,43 @@ export default function TeacherPage() {
     }
   };
 
+  if (!currentUser || currentUser.role !== "teacher") {
+    return (
+      <main className="mx-auto min-h-screen max-w-4xl p-6 md:p-10">
+        <section className="poster-shell p-6 md:p-8">
+          <div className="relative z-10 paper-card p-5">
+            <h1 className="poster-title text-3xl font-bold">老师页面需要教师登录</h1>
+            <p className="mt-2 text-sm text-slate-700">请先登录为老师账号，再进行建班与任务发布操作。</p>
+            <a className="btn-ink mt-4 inline-block text-sm" href="/login">
+              前往登录
+            </a>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto min-h-screen max-w-6xl p-6 md:p-10">
       <section className="poster-shell p-6 md:p-8">
         <div className="relative z-10 flex flex-col gap-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="seal-chip">教师工作台 · 建班与任务发布</span>
-            <a className="text-sm text-slate-700 underline" href="/">
-              返回首页
-            </a>
+            <div className="flex items-center gap-3 text-sm text-slate-700">
+              <span>
+                {currentUser.display_name} · {currentUser.phone}
+              </span>
+              <button
+                className="underline"
+                onClick={() => {
+                  clearAuthSession();
+                  window.location.href = "/login";
+                }}
+                type="button"
+              >
+                退出登录
+              </button>
+            </div>
           </div>
 
           <div className="grid gap-5 lg:grid-cols-2">
@@ -101,23 +124,17 @@ export default function TeacherPage() {
               <h2 className="poster-title text-2xl font-semibold">1) 建立班级</h2>
 
               <div>
-                <p className="label">Teacher ID</p>
-                <input className="field mt-1" value={teacherId} onChange={(e) => setTeacherId(e.target.value)} />
-              </div>
-
-              <div>
-                <p className="label">Teacher Name</p>
-                <input className="field mt-1" value={teacherName} onChange={(e) => setTeacherName(e.target.value)} />
-              </div>
-
-              <div>
                 <p className="label">Class Name</p>
-                <input className="field mt-1" value={className} onChange={(e) => setClassName(e.target.value)} />
+                <input className="field mt-1" value={className} onChange={(event) => setClassName(event.target.value)} />
               </div>
 
               <div>
                 <p className="label">Grade Band</p>
-                <select className="field mt-1" value={gradeBand} onChange={(e) => setGradeBand(e.target.value as GradeBand)}>
+                <select
+                  className="field mt-1"
+                  value={gradeBand}
+                  onChange={(event) => setGradeBand(event.target.value as GradeBand)}
+                >
                   <option value="primary">小学（primary）</option>
                   <option value="junior">初中（junior）</option>
                 </select>
@@ -133,7 +150,11 @@ export default function TeacherPage() {
 
               <div>
                 <p className="label">Target Class</p>
-                <select className="field mt-1" value={selectedClassId} onChange={(e) => setSelectedClassId(e.target.value)}>
+                <select
+                  className="field mt-1"
+                  value={selectedClassId}
+                  onChange={(event) => setSelectedClassId(event.target.value)}
+                >
                   <option value="">请选择班级</option>
                   {classroomList.map((room) => (
                     <option key={room.class_id} value={room.class_id}>
@@ -148,7 +169,7 @@ export default function TeacherPage() {
                 <input
                   className="field mt-1"
                   value={assignmentTitle}
-                  onChange={(e) => setAssignmentTitle(e.target.value)}
+                  onChange={(event) => setAssignmentTitle(event.target.value)}
                 />
               </div>
 
@@ -157,7 +178,7 @@ export default function TeacherPage() {
                 <textarea
                   className="field mt-1 min-h-28"
                   value={assignmentPrompt}
-                  onChange={(e) => setAssignmentPrompt(e.target.value)}
+                  onChange={(event) => setAssignmentPrompt(event.target.value)}
                 />
               </div>
 
@@ -167,7 +188,7 @@ export default function TeacherPage() {
                   className="field mt-1"
                   type="datetime-local"
                   value={dueAt}
-                  onChange={(e) => setDueAt(e.target.value)}
+                  onChange={(event) => setDueAt(event.target.value)}
                 />
               </div>
 
@@ -211,7 +232,7 @@ export default function TeacherPage() {
               <div className="mt-2 space-y-2 text-sm">
                 <p>当前选中班级：{selectedClassName || "未选择"}</p>
                 <p>最新任务 ID：{latestAssignmentId || "尚未发布"}</p>
-                <p className="text-slate-600">可用学生页输入班级码验证“加班”流程。</p>
+                <p className="text-slate-600">学生端登录后可输入班级码完成加入。</p>
               </div>
             </div>
           </div>

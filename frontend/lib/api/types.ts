@@ -5,7 +5,7 @@ export type HealthResponse = {
 
 export type SendCodeRequest = {
   phone: string;
-  role_hint?: "teacher" | "student";
+  role_hint: "teacher" | "student";
 };
 
 export type SendCodeResponse = {
@@ -16,24 +16,25 @@ export type SendCodeResponse = {
 export type LoginRequest = {
   phone: string;
   code: string;
+  display_name?: string;
+};
+
+export type UserProfile = {
+  id: string;
+  role: "teacher" | "student";
+  phone: string;
+  display_name: string;
 };
 
 export type LoginResponse = {
   access_token: string;
   refresh_token: string;
-  user: {
-    id: string;
-    role: "teacher" | "student";
-    phone: string;
-    display_name: string;
-  };
+  user: UserProfile;
 };
 
 export type GradeBand = "primary" | "junior";
 
 export type CreateClassRequest = {
-  teacher_id: string;
-  teacher_name: string;
   name: string;
   grade_band: GradeBand;
 };
@@ -45,8 +46,7 @@ export type CreateClassResponse = {
 
 export type JoinClassRequest = {
   join_code: string;
-  student_id: string;
-  student_name: string;
+  student_name?: string;
 };
 
 export type JoinClassResponse = {
@@ -56,7 +56,6 @@ export type JoinClassResponse = {
 
 export type CreateAssignmentRequest = {
   class_id: string;
-  teacher_id: string;
   title: string;
   prompt: string;
   due_at?: string;

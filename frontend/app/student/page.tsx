@@ -1,22 +1,23 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { joinClass } from "@/lib/api/client";
-
-function makeId(prefix: string): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
-  }
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
-}
+import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
+import type { UserProfile } from "@/lib/api/types";
 
 export default function StudentPage() {
-  const [studentId, setStudentId] = useState(() => makeId("student"));
-  const [studentName, setStudentName] = useState("小明");
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [studentName, setStudentName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [result, setResult] = useState<{ class_id: string; class_name: string } | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const session = getAuthSession();
+    setCurrentUser(session?.user ?? null);
+    setStudentName(session?.user.display_name ?? "");
+  }, []);
 
   const onJoinClass = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -26,8 +27,7 @@ export default function StudentPage() {
     try {
       const joined = await joinClass({
         join_code: joinCode.trim().toUpperCase(),
-        student_id: studentId.trim(),
-        student_name: studentName.trim()
+        student_name: studentName.trim() || undefined
       });
       setResult(joined);
     } catch (joinError) {
@@ -37,28 +37,51 @@ export default function StudentPage() {
     }
   };
 
+  if (!currentUser || currentUser.role !== "student") {
+    return (
+      <main className="mx-auto min-h-screen max-w-4xl p-6 md:p-10">
+        <section className="poster-shell p-6 md:p-8">
+          <div className="relative z-10 paper-card p-5">
+            <h1 className="poster-title text-3xl font-bold">学生页面需要学生登录</h1>
+            <p className="mt-2 text-sm text-slate-700">请先登录为学生账号，再输入班级码加入班级。</p>
+            <a className="btn-seal mt-4 inline-block text-sm" href="/login">
+              前往登录
+            </a>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto min-h-screen max-w-4xl p-6 md:p-10">
       <section className="poster-shell p-6 md:p-8">
         <div className="relative z-10 flex flex-col gap-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="seal-chip">学生入口 · 班级码加入</span>
-            <a className="text-sm text-slate-700 underline" href="/">
-              返回首页
-            </a>
+            <div className="flex items-center gap-3 text-sm text-slate-700">
+              <span>
+                {currentUser.display_name} · {currentUser.phone}
+              </span>
+              <button
+                className="underline"
+                onClick={() => {
+                  clearAuthSession();
+                  window.location.href = "/login";
+                }}
+                type="button"
+              >
+                退出登录
+              </button>
+            </div>
           </div>
 
           <form className="paper-card space-y-4 p-5" onSubmit={onJoinClass}>
             <h1 className="poster-title text-3xl font-bold">输入班级码，加入课堂</h1>
 
             <div>
-              <p className="label">Student ID</p>
-              <input className="field mt-1" value={studentId} onChange={(e) => setStudentId(e.target.value)} />
-            </div>
-
-            <div>
               <p className="label">Student Name</p>
-              <input className="field mt-1" value={studentName} onChange={(e) => setStudentName(e.target.value)} />
+              <input className="field mt-1" value={studentName} onChange={(event) => setStudentName(event.target.value)} />
             </div>
 
             <div>
@@ -66,7 +89,7 @@ export default function StudentPage() {
               <input
                 className="field mt-1 uppercase tracking-[0.2em]"
                 value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value)}
+                onChange={(event) => setJoinCode(event.target.value)}
                 placeholder="例如 ABC123"
               />
             </div>

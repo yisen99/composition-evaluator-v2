@@ -1,9 +1,13 @@
+from typing import Literal
+
 from pydantic import BaseModel
+
+UserRole = Literal["teacher", "student"]
 
 
 class SendCodeRequest(BaseModel):
     phone: str
-    role_hint: str | None = None
+    role_hint: UserRole
 
 
 class SendCodeResponse(BaseModel):
@@ -14,11 +18,12 @@ class SendCodeResponse(BaseModel):
 class LoginRequest(BaseModel):
     phone: str
     code: str
+    display_name: str | None = None
 
 
 class UserProfile(BaseModel):
     id: str
-    role: str
+    role: UserRole
     phone: str
     display_name: str
 

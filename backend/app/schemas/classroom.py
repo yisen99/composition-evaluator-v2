@@ -4,8 +4,6 @@ from pydantic import BaseModel
 
 
 class CreateClassRequest(BaseModel):
-    teacher_id: str
-    teacher_name: str
     name: str
     grade_band: Literal["primary", "junior"]
 
@@ -17,8 +15,7 @@ class CreateClassResponse(BaseModel):
 
 class JoinClassRequest(BaseModel):
     join_code: str
-    student_id: str
-    student_name: str
+    student_name: str | None = None
 
 
 class JoinClassResponse(BaseModel):
