@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background: #f7f7f2;
+  color: #1f2937;
+  font-family: "Noto Sans SC", "PingFang SC", sans-serif;
+}

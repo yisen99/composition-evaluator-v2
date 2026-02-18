@@ -1,0 +1,10 @@
+[project]
+name = "composition-evaluator-backend"
+version = "0.1.0"
+description = "FastAPI backend skeleton for composition evaluator"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = "-q"
+testpaths = ["tests"]
