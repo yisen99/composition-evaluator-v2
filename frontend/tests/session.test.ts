@@ -1,10 +1,15 @@
-import { AUTH_ROLE_COOKIE_KEY, AUTH_SESSION_KEY } from "@/lib/auth/constants";
+import { AUTH_EXPIRES_AT_COOKIE_KEY, AUTH_ROLE_COOKIE_KEY, AUTH_SESSION_KEY } from "@/lib/auth/constants";
 import { clearAuthSession, getAuthSession, saveAuthSession } from "@/lib/auth/session";
 import type { LoginResponse } from "@/lib/api/types";
 
-function buildSession(role: "teacher" | "student"): LoginResponse {
+function buildJwt(payload: Record<string, unknown>): string {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}.signature`;
+}
+
+function buildSession(role: "teacher" | "student", accessToken?: string): LoginResponse {
   return {
-    access_token: "access-token",
+    access_token: accessToken ?? "access-token",
     refresh_token: "refresh-token",
     user: {
       id: "user-1",
@@ -19,6 +24,7 @@ describe("auth session storage", () => {
   beforeEach(() => {
     window.localStorage.clear();
     document.cookie = `${AUTH_ROLE_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
+    document.cookie = `${AUTH_EXPIRES_AT_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
   });
 
   it("saves localStorage and role cookie", () => {
@@ -30,12 +36,25 @@ describe("auth session storage", () => {
   });
 
   it("hydrates session and refreshes role cookie", () => {
-    window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(buildSession("student")));
+    const futureToken = buildJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+    window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(buildSession("student", futureToken)));
 
     const session = getAuthSession();
 
     expect(session?.user.role).toBe("student");
     expect(document.cookie).toContain(`${AUTH_ROLE_COOKIE_KEY}=student`);
+    expect(document.cookie).toContain(`${AUTH_EXPIRES_AT_COOKIE_KEY}=`);
+  });
+
+  it("invalidates expired session token and clears storage", () => {
+    const expiredToken = buildJwt({ exp: Math.floor(Date.now() / 1000) - 60 });
+    window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(buildSession("teacher", expiredToken)));
+
+    const session = getAuthSession();
+
+    expect(session).toBeNull();
+    expect(window.localStorage.getItem(AUTH_SESSION_KEY)).toBeNull();
+    expect(document.cookie).not.toContain(`${AUTH_ROLE_COOKIE_KEY}=teacher`);
   });
 
   it("clears both localStorage and role cookie", () => {

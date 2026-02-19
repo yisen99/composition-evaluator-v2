@@ -18,11 +18,26 @@ export function requiredRoleForPath(pathname: string): AuthRole | null {
   return null;
 }
 
-export function resolveRouteGuardRedirect(pathAndQuery: string, roleFromCookie: string | null | undefined): string | null {
+function isExpired(expAtSeconds: number | null | undefined): boolean {
+  if (!expAtSeconds || !Number.isFinite(expAtSeconds)) {
+    return false;
+  }
+  return expAtSeconds <= Math.floor(Date.now() / 1000);
+}
+
+export function resolveRouteGuardRedirect(
+  pathAndQuery: string,
+  roleFromCookie: string | null | undefined,
+  expAtSeconds: number | null | undefined = null
+): string | null {
   const pathname = pathAndQuery.split("?")[0] ?? pathAndQuery;
   const requiredRole = requiredRoleForPath(pathname);
   if (!requiredRole) {
     return null;
+  }
+
+  if (isExpired(expAtSeconds)) {
+    return withNextPath(requiredRole === "teacher" ? "/login/teacher" : "/login/student", pathAndQuery);
   }
 
   const currentRole = normalizeRole(roleFromCookie);

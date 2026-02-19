@@ -31,4 +31,8 @@ describe("route guard helpers", () => {
   it("preserves query string in next parameter", () => {
     expect(resolveRouteGuardRedirect("/student?tab=todo", null)).toBe("/login/student?next=%2Fstudent%3Ftab%3Dtodo");
   });
+
+  it("redirects when auth cookie is expired", () => {
+    expect(resolveRouteGuardRedirect("/teacher", "teacher", 1)).toBe("/login/teacher?next=%2Fteacher");
+  });
 });
