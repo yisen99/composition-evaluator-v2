@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildApiPath,
   checkHealth,
+  login,
   loginWithPassword,
   registerAccount,
   createReviewSummary,
@@ -473,6 +474,26 @@ describe("frontend smoke", () => {
         phone: "13800138000"
       })
     ).rejects.toThrow("该邮箱或手机号已被注册，请更换后重试。");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("maps teacher sms disabled error to friendly chinese message", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Teacher SMS signup is disabled" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(
+      login({
+        phone: "13800138000",
+        code: "123456",
+        display_name: "王老师"
+      })
+    ).rejects.toThrow("老师账号不支持短信注册，请使用邮箱密码注册/登录。");
 
     vi.unstubAllGlobals();
   });

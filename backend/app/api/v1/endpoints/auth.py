@@ -22,6 +22,12 @@ def send_code(payload: SendCodeRequest, db: Session = Depends(get_db)) -> SendCo
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid phone format") from exc
 
     existing_user = db.scalar(select(User).where(User.phone == normalized_phone))
+    if payload.role_hint == "teacher" and not existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Teacher SMS signup is disabled",
+        )
+
     if existing_user and existing_user.role != payload.role_hint:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -49,9 +55,14 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone role mismatch")
 
     if not user:
+        if verification.role_hint == "teacher":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Teacher SMS signup is disabled",
+            )
         user = User(
             id=str(uuid4()),
-            role=verification.role_hint,
+            role="student",
             phone=verification.phone,
             display_name=payload.display_name or f"{verification.role_hint}-{verification.phone[-4:]}",
         )

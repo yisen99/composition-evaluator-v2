@@ -2,6 +2,7 @@ import uuid
 from typing import Literal
 
 from fastapi_users import schemas
+from pydantic import ConfigDict
 
 AccountRole = Literal["teacher", "student"]
 
@@ -19,6 +20,6 @@ class AuthAccountCreate(schemas.BaseUserCreate):
 
 
 class AuthAccountUpdate(schemas.BaseUserUpdate):
-    role: AccountRole | None = None
+    model_config = ConfigDict(extra="forbid")
     display_name: str | None = None
     phone: str | None = None

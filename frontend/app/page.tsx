@@ -47,13 +47,13 @@ export default function HomePage() {
             <a className="paper-card p-5" href="/login">
               <p className="label">Auth</p>
               <h2 className="mt-2 text-2xl font-semibold">登录占位页</h2>
-              <p className="mt-2 text-sm text-slate-700">预留短信验证码登录入口与角色切换。</p>
+              <p className="mt-2 text-sm text-slate-700">账号密码登录 + 学生短信快捷登录入口。</p>
             </a>
           </div>
         </div>
       </section>
       <div className="mx-auto mt-6 max-w-3xl text-center text-xs text-slate-600">
-        先完成“建班 / 加班 / 发布任务”联调，后续再接入真实登录态。
+        已接入账号密码登录，短信模式仅用于学生侧联调。
       </div>
     </main>
   );

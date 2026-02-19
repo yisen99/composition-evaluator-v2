@@ -29,7 +29,8 @@ import { getAccessToken } from "@/lib/auth/session";
 export const API_PROXY_PREFIX = "/api/backend";
 const API_ERROR_MESSAGES: Record<string, string> = {
   REGISTER_USER_ALREADY_EXISTS: "该邮箱或手机号已被注册，请更换后重试。",
-  LOGIN_BAD_CREDENTIALS: "账号或密码错误，请检查后重试。"
+  LOGIN_BAD_CREDENTIALS: "账号或密码错误，请检查后重试。",
+  "Teacher SMS signup is disabled": "老师账号不支持短信注册，请使用邮箱密码注册/登录。"
 };
 
 type ErrorDetailItem = {

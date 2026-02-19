@@ -17,6 +17,41 @@ def _login(
     role: str,
     display_name: str,
 ) -> tuple[str, dict]:
+    if role == "teacher":
+        email = f"teacher_{phone}_{time.time_ns()}@example.com"
+        register_response = client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": email,
+                "password": "SecurePass123!",
+                "role": "teacher",
+                "display_name": display_name,
+                "phone": phone,
+            },
+        )
+        assert register_response.status_code == 201
+
+        login_response = client.post(
+            "/api/v1/auth/jwt/login",
+            data={"username": email, "password": "SecurePass123!"},
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        assert login_response.status_code == 200
+        token = login_response.json()["access_token"]
+
+        me_response = client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert me_response.status_code == 200
+        me_payload = me_response.json()
+        return token, {
+            "id": me_payload["id"],
+            "role": me_payload["role"],
+            "phone": me_payload["phone"] or phone,
+            "display_name": me_payload["display_name"],
+        }
+
     send_code_response = client.post(
         "/api/v1/auth/send-code",
         json={"phone": phone, "role_hint": role},

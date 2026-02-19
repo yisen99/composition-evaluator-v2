@@ -47,42 +47,9 @@ class AuthAccountManager(UUIDIDMixin, BaseUserManager[AuthAccount, uuid.UUID]):
         return await super().create(normalized_create, safe=safe, request=request)
 
     async def on_after_register(self, user: AuthAccount, request: Optional[Request] = None) -> None:
-        normalized_phone = _safe_normalize_phone(user.phone)
         db = SessionLocal()
         try:
-            domain_user = db.get(User, str(user.id))
-            mapped_phone = _domain_phone_or_none(db, normalized_phone, domain_user_id=str(user.id))
-            if not domain_user:
-                domain_user = User(
-                    id=str(user.id),
-                    role=user.role,
-                    phone=mapped_phone,
-                    display_name=user.display_name,
-                )
-                db.add(domain_user)
-            else:
-                domain_user.role = user.role
-                domain_user.phone = mapped_phone
-                domain_user.display_name = user.display_name
-            try:
-                db.commit()
-            except IntegrityError:
-                db.rollback()
-                # Keep registration successful; drop conflicting phone link in domain profile.
-                domain_user = db.get(User, str(user.id))
-                if not domain_user:
-                    domain_user = User(
-                        id=str(user.id),
-                        role=user.role,
-                        phone=None,
-                        display_name=user.display_name,
-                    )
-                    db.add(domain_user)
-                else:
-                    domain_user.phone = None
-                    domain_user.role = user.role
-                    domain_user.display_name = user.display_name
-                db.commit()
+            _upsert_domain_user_from_account(db, user)
         finally:
             db.close()
 
@@ -94,18 +61,7 @@ class AuthAccountManager(UUIDIDMixin, BaseUserManager[AuthAccount, uuid.UUID]):
     ) -> None:
         db = SessionLocal()
         try:
-            domain_user = db.scalar(select(User).where(User.id == str(user.id)))
-            if domain_user is None:
-                mapped_phone = _domain_phone_or_none(db, _safe_normalize_phone(user.phone), domain_user_id=str(user.id))
-                db.add(
-                    User(
-                        id=str(user.id),
-                        role=user.role,
-                        phone=mapped_phone,
-                        display_name=user.display_name,
-                    )
-                )
-                db.commit()
+            _upsert_domain_user_from_account(db, user)
         finally:
             db.close()
 
@@ -175,3 +131,40 @@ def _domain_phone_or_none(db, phone: str | None, domain_user_id: str) -> str | N
         .limit(1)
     )
     return None if conflict else phone
+
+
+def _upsert_domain_user_from_account(db, user: AuthAccount) -> None:
+    normalized_phone = _safe_normalize_phone(user.phone)
+    domain_user = db.get(User, str(user.id))
+    mapped_phone = _domain_phone_or_none(db, normalized_phone, domain_user_id=str(user.id))
+    if not domain_user:
+        domain_user = User(
+            id=str(user.id),
+            role=user.role,
+            phone=mapped_phone,
+            display_name=user.display_name,
+        )
+        db.add(domain_user)
+    else:
+        domain_user.role = user.role
+        domain_user.phone = mapped_phone
+        domain_user.display_name = user.display_name
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # Keep auth flow available; drop conflicting phone link in domain profile.
+        domain_user = db.get(User, str(user.id))
+        if not domain_user:
+            domain_user = User(
+                id=str(user.id),
+                role=user.role,
+                phone=None,
+                display_name=user.display_name,
+            )
+            db.add(domain_user)
+        else:
+            domain_user.phone = None
+            domain_user.role = user.role
+            domain_user.display_name = user.display_name
+        db.commit()

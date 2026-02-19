@@ -11,7 +11,7 @@ class Settings(BaseModel):
     access_token_expire_minutes: int = 60
     refresh_token_expire_minutes: int = 60 * 24 * 7
     auth_code_expire_seconds: int = 300
-    auth_fixed_code: str | None = "123456"
+    auth_fixed_code: str | None = None
     storage_root: str = "./storage/uploads"
     storage_public_base_url: str = "/storage/uploads"
     qwen_api_key: str | None = None
@@ -28,7 +28,7 @@ settings = Settings(
     access_token_expire_minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")),
     refresh_token_expire_minutes=int(os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 7))),
     auth_code_expire_seconds=int(os.getenv("AUTH_CODE_EXPIRE_SECONDS", "300")),
-    auth_fixed_code=os.getenv("AUTH_FIXED_CODE", "123456"),
+    auth_fixed_code=os.getenv("AUTH_FIXED_CODE") or None,
     storage_root=os.getenv("STORAGE_ROOT", "./storage/uploads"),
     storage_public_base_url=os.getenv("STORAGE_PUBLIC_BASE_URL", "/storage/uploads"),
     qwen_api_key=os.getenv("QWEN_API_KEY"),

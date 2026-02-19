@@ -15,10 +15,9 @@ export default function LoginPage() {
   const [mode, setMode] = useState<"sms" | "password">("password");
   const [passwordMode, setPasswordMode] = useState<"login" | "register">("login");
 
-  const [roleHint, setRoleHint] = useState<"teacher" | "student">("teacher");
   const [smsPhone, setSmsPhone] = useState("13800138000");
-  const [smsDisplayName, setSmsDisplayName] = useState("王老师");
-  const [code, setCode] = useState("123456");
+  const [smsDisplayName, setSmsDisplayName] = useState("小明");
+  const [code, setCode] = useState("");
 
   const [loginEmail, setLoginEmail] = useState("teacher@example.com");
   const [loginPassword, setLoginPassword] = useState("SecurePass123!");
@@ -41,9 +40,9 @@ export default function LoginPage() {
     try {
       await sendCode({
         phone: smsPhone.trim(),
-        role_hint: roleHint
+        role_hint: "student"
       });
-      setToast({ type: "ok", message: "验证码已发送（开发环境默认 123456）。" });
+      setToast({ type: "ok", message: "验证码已发送，请查收短信后填写。" });
     } catch (error) {
       setToast({ type: "error", message: `发送失败：${(error as Error).message}` });
     } finally {
@@ -122,11 +121,10 @@ export default function LoginPage() {
             <span className="seal-chip">真实登录态</span>
             <h1 className="poster-title mt-4 text-4xl font-bold">身份校验</h1>
             <p className="mt-3 text-sm text-slate-700">
-              账号模式字段严格对齐真实接口：注册使用 `email/password/role/display_name/phone`，登录使用
-              `username(email)+password`。
+              账号模式字段严格对齐真实接口：注册使用 `email/password/role/display_name/phone`，登录使用 `username(email)+password`。
             </p>
             <div className="mt-4 rounded-xl border border-amber-700/30 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-              当前开发环境固定验证码：123456
+              短信模式仅用于学生快捷登录；老师请使用账号密码登录。
             </div>
             <div className="mt-4 flex gap-2">
               <button
@@ -256,18 +254,6 @@ export default function LoginPage() {
             </form>
           ) : (
             <form className="paper-card flex flex-col gap-3 p-5" onSubmit={onLogin}>
-              <div>
-                <p className="label">Role</p>
-                <select
-                  className="field mt-1"
-                  value={roleHint}
-                  onChange={(event) => setRoleHint(event.target.value as "teacher" | "student")}
-                >
-                  <option value="teacher">老师</option>
-                  <option value="student">学生</option>
-                </select>
-              </div>
-
               <div>
                 <p className="label">Phone</p>
                 <input className="field mt-1" value={smsPhone} onChange={(event) => setSmsPhone(event.target.value)} />
