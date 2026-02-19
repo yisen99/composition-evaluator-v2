@@ -12,6 +12,7 @@ import {
   getAssignmentGradingQueue,
   getManualReviewForSubmission,
   getMyProgress,
+  listMyManualFeedback,
   listMySubmissions,
   publishManualReview,
   saveManualReviewDraft,
@@ -618,6 +619,45 @@ describe("frontend smoke", () => {
     expect(data[0].submission_id).toBe("sub-1");
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/backend/api/v1/submissions/me",
+      expect.objectContaining({ method: "GET" })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("lists published manual feedback via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            submission_id: "sub-1",
+            assignment_id: "asg-1",
+            assignment_title: "我的校园",
+            class_id: "class-1",
+            class_name: "三年级一班",
+            content_type: "text",
+            created_at: "2026-02-19T00:00:00Z",
+            manual_total_score: 88,
+            structure_score: 86,
+            language_score: 88,
+            value_score: 90,
+            summary_feedback: "结构清楚，细节可再加强。",
+            actionable_suggestions: ["补充动作细节。", "结尾增加反思。"],
+            strengths: "开头切题快。",
+            next_goal: "练习过渡句。",
+            manual_published_at: "2026-02-19T02:10:00Z"
+          }
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await listMyManualFeedback();
+    expect(data).toHaveLength(1);
+    expect(data[0].manual_total_score).toBe(88);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/submissions/me/manual-feedback",
       expect.objectContaining({ method: "GET" })
     );
 

@@ -3,14 +3,19 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps.auth import require_student
 from app.core.config import settings
 from app.db.deps import get_db
-from app.models import Assignment, ClassMember, ClassRoom, Submission, User
-from app.schemas.submission import CreateSubmissionResponse, StudentSubmissionListItem, SubmissionContentType
+from app.models import Assignment, ClassMember, ClassRoom, ManualReview, Submission, User
+from app.schemas.submission import (
+    CreateSubmissionResponse,
+    StudentManualFeedbackItem,
+    StudentSubmissionListItem,
+    SubmissionContentType,
+)
 from app.services.storage import get_storage_backend
 
 router = APIRouter()
@@ -84,6 +89,50 @@ def list_my_submissions(
             text_excerpt=submission.text_content[:120] if submission.text_content else None,
         )
         for submission, assignment_title, due_at, class_name in rows
+    ]
+
+
+@router.get("/me/manual-feedback", response_model=list[StudentManualFeedbackItem])
+def list_my_manual_feedback(
+    db: Session = Depends(get_db),
+    current_student: User = Depends(require_student),
+) -> list[StudentManualFeedbackItem]:
+    rows = db.execute(
+        select(Submission, Assignment.title, ClassRoom.name, ManualReview)
+        .join(Assignment, Assignment.id == Submission.assignment_id)
+        .join(ClassRoom, ClassRoom.id == Submission.class_id)
+        .join(
+            ManualReview,
+            and_(
+                ManualReview.submission_id == Submission.id,
+                ManualReview.student_id == current_student.id,
+                ManualReview.status == "published",
+            ),
+        )
+        .where(Submission.student_id == current_student.id)
+        .order_by(ManualReview.published_at.desc(), Submission.created_at.desc())
+    ).all()
+
+    return [
+        StudentManualFeedbackItem(
+            submission_id=submission.id,
+            assignment_id=submission.assignment_id,
+            assignment_title=assignment_title,
+            class_id=submission.class_id,
+            class_name=class_name,
+            content_type=submission.content_type,
+            created_at=submission.created_at,
+            manual_total_score=manual_review.total_score,
+            structure_score=manual_review.structure_score,
+            language_score=manual_review.language_score,
+            value_score=manual_review.value_score,
+            summary_feedback=manual_review.summary_feedback,
+            actionable_suggestions=manual_review.actionable_suggestions,
+            strengths=manual_review.strengths,
+            next_goal=manual_review.next_goal,
+            manual_published_at=manual_review.published_at,
+        )
+        for submission, assignment_title, class_name, manual_review in rows
     ]
 
 

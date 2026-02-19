@@ -26,6 +26,7 @@ import type {
   RunSubmissionReviewResponse,
   SendCodeRequest,
   SendCodeResponse,
+  StudentManualFeedbackItem,
   StudentProgressResponse,
   StudentSubmissionListItem,
   StudentMemoryResponse
@@ -338,6 +339,12 @@ export function getMyProgress(): Promise<StudentProgressResponse> {
 
 export function listMySubmissions(): Promise<StudentSubmissionListItem[]> {
   return apiRequest<StudentSubmissionListItem[]>("/api/v1/submissions/me", {
+    method: "GET"
+  });
+}
+
+export function listMyManualFeedback(): Promise<StudentManualFeedbackItem[]> {
+  return apiRequest<StudentManualFeedbackItem[]>("/api/v1/submissions/me/manual-feedback", {
     method: "GET"
   });
 }

@@ -165,6 +165,25 @@ export type StudentSubmissionListItem = {
   text_excerpt?: string | null;
 };
 
+export type StudentManualFeedbackItem = {
+  submission_id: string;
+  assignment_id: string;
+  assignment_title: string;
+  class_id: string;
+  class_name: string;
+  content_type: SubmissionContentType;
+  created_at: string;
+  manual_total_score: number;
+  structure_score: number;
+  language_score: number;
+  value_score: number;
+  summary_feedback: string;
+  actionable_suggestions: string[];
+  strengths?: string | null;
+  next_goal?: string | null;
+  manual_published_at?: string | null;
+};
+
 export type ManualReviewStatus = "draft" | "published";
 export type ManualReviewQueueStatus = "none" | "draft" | "published";
 

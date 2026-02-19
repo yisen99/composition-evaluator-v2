@@ -185,6 +185,9 @@ export default function StudentPage() {
               <Link className="underline" href="/student/progress">
                 成长轨迹
               </Link>
+              <Link className="underline" href="/student/feedback">
+                手工批改结果
+              </Link>
               <span>
                 {currentUser.display_name} · {currentUser.phone}
               </span>

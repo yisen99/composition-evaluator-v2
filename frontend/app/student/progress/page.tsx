@@ -72,6 +72,9 @@ export default function StudentProgressPage() {
               <Link className="underline" href="/student">
                 返回学生工作台
               </Link>
+              <Link className="underline" href="/student/feedback">
+                手工批改结果
+              </Link>
               <span>
                 {currentUser.display_name} · {currentUser.phone}
               </span>
