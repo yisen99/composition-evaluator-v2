@@ -107,6 +107,58 @@ def _call_qwen_agent_review(
         return None
 
 
+def _call_qwen_summary_synthesis(
+    *,
+    prompt: str,
+    text_excerpt: str,
+    feedbacks: dict[str, str],
+) -> tuple[list[str], str] | None:
+    if not _has_qwen_key():
+        return None
+
+    user_prompt = (
+        "你是语文作文改写教练。基于以下信息生成建议：\n"
+        f"- 作文要求: {prompt}\n"
+        f"- 内容片段: {text_excerpt[:800] or '(无文本)'}\n"
+        f"- 结构反馈: {feedbacks.get('structure', '')}\n"
+        f"- 语言反馈: {feedbacks.get('language', '')}\n"
+        f"- 立意反馈: {feedbacks.get('value', '')}\n"
+        "请输出 JSON，对象字段为 actionable_suggestions(2-4条)、rewrite_paragraph(80-180字)。"
+    )
+    try:
+        with httpx.Client(timeout=settings.qwen_timeout_seconds) as client:
+            response = client.post(
+                f"{settings.qwen_base_url.rstrip('/')}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.qwen_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": settings.qwen_model,
+                    "temperature": 0.25,
+                    "response_format": {"type": "json_object"},
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "你是语文作文改写教练。只输出 JSON。"
+                        },
+                        {"role": "user", "content": user_prompt},
+                    ],
+                },
+            )
+        response.raise_for_status()
+        payload = response.json()
+        content = payload["choices"][0]["message"]["content"]
+        parsed = json.loads(content)
+        suggestions = [str(item).strip() for item in parsed.get("actionable_suggestions", []) if str(item).strip()]
+        rewrite_paragraph = str(parsed.get("rewrite_paragraph", "")).strip()
+        if not suggestions or not rewrite_paragraph:
+            return None
+        return suggestions[:4], rewrite_paragraph
+    except Exception:
+        return None
+
+
 def _build_fallback_review(
     *,
     agent_name: ReviewAgentName,
@@ -197,3 +249,27 @@ def build_summary_suggestions(*, feedbacks: dict[str, str], prompt: str) -> list
     if not suggestions:
         suggestions.append(f"结合题目要求“{prompt[:18]}”，先补充细节再优化句式。")
     return suggestions[:4]
+
+
+def build_fallback_rewrite_paragraph(*, prompt: str, text_excerpt: str) -> str:
+    seed = text_excerpt.strip()
+    if seed:
+        return (
+            f"围绕“{prompt[:16]}”，我先写清场景中的动作与细节。"
+            f"{seed[:28]}之后，我补上当时的感受，并在结尾写出这件事带来的思考。"
+        )
+    return f"围绕“{prompt[:16]}”，我会先写场景细节，再补充个人感受，最后回扣主题表达成长。"
+
+
+def build_summary_guidance(*, feedbacks: dict[str, str], prompt: str, text_excerpt: str) -> tuple[list[str], str]:
+    llm_payload = _call_qwen_summary_synthesis(
+        prompt=prompt,
+        text_excerpt=text_excerpt,
+        feedbacks=feedbacks,
+    )
+    if llm_payload:
+        return llm_payload
+
+    suggestions = build_summary_suggestions(feedbacks=feedbacks, prompt=prompt)
+    paragraph = build_fallback_rewrite_paragraph(prompt=prompt, text_excerpt=text_excerpt)
+    return suggestions, paragraph

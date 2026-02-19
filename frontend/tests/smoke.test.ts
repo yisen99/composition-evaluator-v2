@@ -360,7 +360,8 @@ describe("frontend smoke", () => {
             { agent_name: "language", score: 86, feedback: "语言较准确。" },
             { agent_name: "value", score: 85, feedback: "立意较完整。" }
           ],
-          actionable_suggestions: ["补充细节描写。", "结尾增加反思。"]
+          actionable_suggestions: ["补充细节描写。", "结尾增加反思。"],
+          rewrite_paragraph: "清晨的冷风掠过操场，我把围巾拉紧，忽然看见跑道旁的银杏叶一片片旋落。"
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
       )
@@ -370,6 +371,7 @@ describe("frontend smoke", () => {
     const data = await createReviewSummary({ submission_id: "sub-1" });
     expect(data.total_score).toBe(85);
     expect(data.items).toHaveLength(3);
+    expect(data.rewrite_paragraph.length).toBeGreaterThan(10);
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/backend/api/v1/reviews/summary",
       expect.objectContaining({

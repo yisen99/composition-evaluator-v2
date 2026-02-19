@@ -17,7 +17,7 @@ from app.schemas.review import (
     RunReviewRequest,
     RunReviewResponse,
 )
-from app.services.review import build_summary_suggestions, run_agent_review
+from app.services.review import build_summary_guidance, run_agent_review
 
 router = APIRouter()
 
@@ -159,13 +159,14 @@ def create_review_summary(
     valid_scores = [radar.structure, radar.language, radar.value]
     total_score = round(sum(valid_scores) / len(valid_scores)) if valid_scores else 0
 
-    actionable_suggestions = build_summary_suggestions(
+    actionable_suggestions, rewrite_paragraph = build_summary_guidance(
         feedbacks={
             "structure": feedbacks.get("structure", ""),
             "language": feedbacks.get("language", ""),
             "value": feedbacks.get("value", ""),
         },
         prompt=assignment.prompt,
+        text_excerpt=submission.text_content or "",
     )
 
     return ReviewSummaryResponse(
@@ -177,4 +178,5 @@ def create_review_summary(
         radar=radar,
         items=summary_items,
         actionable_suggestions=actionable_suggestions,
+        rewrite_paragraph=rewrite_paragraph,
     )

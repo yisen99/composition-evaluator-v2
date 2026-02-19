@@ -306,6 +306,9 @@ export default function TeacherAssignmentDetailPage() {
                                 <li key={item}>{item}</li>
                               ))}
                             </ul>
+                            <p className="mt-2 rounded-md bg-white/80 px-2 py-2 text-slate-700">
+                              改写示例：{summaryBySubmissionId[submission.submission_id].rewrite_paragraph}
+                            </p>
                           </div>
                         ) : null}
                       </li>

@@ -197,6 +197,7 @@ export type ReviewSummaryResponse = {
   };
   items: ReviewSummaryItem[];
   actionable_suggestions: string[];
+  rewrite_paragraph: string;
 };
 
 export type StudentProgressSubmissionItem = {

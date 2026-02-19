@@ -52,3 +52,4 @@ class ReviewSummaryResponse(BaseModel):
     radar: ReviewDimensionScore
     items: list[ReviewSummaryItem]
     actionable_suggestions: list[str]
+    rewrite_paragraph: str

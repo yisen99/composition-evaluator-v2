@@ -439,6 +439,7 @@ def test_teacher_can_run_agent_review_and_fetch_student_memory() -> None:
     assert summary_payload["radar"]["language"] >= 0
     assert summary_payload["radar"]["value"] >= 0
     assert summary_payload["actionable_suggestions"]
+    assert summary_payload["rewrite_paragraph"]
     assert len(summary_payload["items"]) == 3
 
     assert memory_response.status_code == 200
