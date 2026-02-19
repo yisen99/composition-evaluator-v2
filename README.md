@@ -31,3 +31,15 @@ docker compose up --build
 - `GET /api/v1/health`
 - `POST /api/v1/auth/send-code`
 - `POST /api/v1/auth/login`
+- `POST /api/v1/auth/register` (成熟账号方案，FastAPI Users)
+- `POST /api/v1/auth/jwt/login`
+- `GET /api/v1/auth/me`
+
+## 认证方案
+
+项目已接入 GitHub 成熟后端方案 [fastapi-users](https://github.com/fastapi-users/fastapi-users)：
+
+- 账号注册（邮箱+密码）
+- JWT 登录与授权校验
+- 角色授权（teacher/student）与业务接口联动
+- 保留短信验证码登录链路用于兼容调试

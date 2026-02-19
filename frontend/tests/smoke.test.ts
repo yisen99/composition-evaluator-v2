@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildApiPath,
   checkHealth,
+  loginWithPassword,
+  registerAccount,
   createReviewSummary,
   createCompositionSubmission,
   createAssignment,
@@ -410,6 +412,92 @@ describe("frontend smoke", () => {
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/backend/api/v1/students/me/progress",
       expect.objectContaining({ method: "GET" })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("registers account via mature auth backend", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "user-1",
+          email: "teacher@example.com",
+          role: "teacher",
+          display_name: "账号老师",
+          phone: "13800138000",
+          is_active: true,
+          is_superuser: false,
+          is_verified: false
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const payload = {
+      email: "teacher@example.com",
+      password: "SecurePass123!",
+      role: "teacher" as const,
+      display_name: "账号老师",
+      phone: "13800138000"
+    };
+    const data = await registerAccount(payload);
+    expect(data.id).toBe("user-1");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/auth/register",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(payload)
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("logs in with password via mature auth backend", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ access_token: "jwt-token", token_type: "bearer" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            id: "user-1",
+            email: "teacher@example.com",
+            role: "teacher",
+            display_name: "账号老师",
+            phone: "13800138000",
+            is_active: true,
+            is_superuser: false,
+            is_verified: false
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await loginWithPassword("teacher@example.com", "SecurePass123!");
+    expect(data.access_token).toBe("jwt-token");
+    expect(data.user.role).toBe("teacher");
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/backend/api/v1/auth/jwt/login",
+      expect.objectContaining({
+        method: "POST"
+      })
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/backend/api/v1/auth/me",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer jwt-token" })
+      })
     );
 
     vi.unstubAllGlobals();

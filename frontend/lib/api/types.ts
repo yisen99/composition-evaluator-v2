@@ -26,6 +26,25 @@ export type UserProfile = {
   display_name: string;
 };
 
+export type AccountRegisterRequest = {
+  email: string;
+  password: string;
+  role: "teacher" | "student";
+  display_name: string;
+  phone?: string;
+};
+
+export type AccountRegisterResponse = {
+  id: string;
+  email: string;
+  role: "teacher" | "student";
+  display_name: string;
+  phone?: string | null;
+  is_active: boolean;
+  is_superuser: boolean;
+  is_verified: boolean;
+};
+
 export type LoginResponse = {
   access_token: string;
   refresh_token: string;

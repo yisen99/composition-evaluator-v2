@@ -1,4 +1,6 @@
 import type {
+  AccountRegisterRequest,
+  AccountRegisterResponse,
   AssignmentDetailResponse,
   AssignmentListItem,
   ClassListItem,
@@ -74,6 +76,25 @@ async function apiFormRequest<T>(path: string, formData: FormData): Promise<T> {
   return (await response.json()) as T;
 }
 
+async function apiRequestWithToken<T>(path: string, token: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`
+  };
+  if (init?.headers) {
+    Object.assign(headers, init.headers as Record<string, string>);
+  }
+
+  const response = await fetch(buildApiPath(path), {
+    ...init,
+    headers
+  });
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status}`);
+  }
+  return (await response.json()) as T;
+}
+
 export function checkHealth(): Promise<HealthResponse> {
   return apiRequest<HealthResponse>("/api/v1/health", undefined, false);
 }
@@ -90,6 +111,44 @@ export function login(payload: LoginRequest): Promise<LoginResponse> {
     method: "POST",
     body: JSON.stringify(payload)
   }, false);
+}
+
+export function registerAccount(payload: AccountRegisterRequest): Promise<AccountRegisterResponse> {
+  return apiRequest<AccountRegisterResponse>("/api/v1/auth/register", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  }, false);
+}
+
+export async function loginWithPassword(email: string, password: string): Promise<LoginResponse> {
+  const form = new URLSearchParams();
+  form.set("username", email);
+  form.set("password", password);
+
+  const tokenPayload = await apiRequest<{ access_token: string; token_type: string }>(
+    "/api/v1/auth/jwt/login",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString()
+    },
+    false
+  );
+
+  const profile = await apiRequestWithToken<AccountRegisterResponse>("/api/v1/auth/me", tokenPayload.access_token, {
+    method: "GET"
+  });
+
+  return {
+    access_token: tokenPayload.access_token,
+    refresh_token: "",
+    user: {
+      id: profile.id,
+      role: profile.role,
+      phone: profile.phone || profile.email,
+      display_name: profile.display_name
+    }
+  };
 }
 
 export function createClass(payload: CreateClassRequest): Promise<CreateClassResponse> {
