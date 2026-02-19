@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps.auth import get_current_user, require_teacher
 from app.db.deps import get_db
-from app.models import Assignment, ClassMember, ClassRoom, StudentMemoryNote, Submission, SubmissionReview, User
+from app.models import Assignment, ClassMember, ClassRoom, ManualReview, StudentMemoryNote, Submission, SubmissionReview, User
 from app.schemas.assignment import (
     AssignmentDetailResponse,
     AssignmentListItem,
@@ -14,6 +14,7 @@ from app.schemas.assignment import (
     CreateAssignmentRequest,
     CreateAssignmentResponse,
 )
+from app.schemas.manual_review import AssignmentGradingQueueItem, AssignmentGradingQueueResponse
 
 router = APIRouter()
 
@@ -132,6 +133,75 @@ def get_assignment_detail(
         created_at=assignment.created_at,
         submissions_count=len(submissions),
         submissions=submissions,
+    )
+
+
+@router.get("/{assignment_id}/grading-queue", response_model=AssignmentGradingQueueResponse)
+def get_assignment_grading_queue(
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(require_teacher),
+) -> AssignmentGradingQueueResponse:
+    assignment = db.get(Assignment, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    if assignment.teacher_id != current_teacher.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher does not own this assignment")
+
+    submission_rows = db.execute(
+        select(Submission, User.display_name)
+        .join(User, User.id == Submission.student_id)
+        .where(Submission.assignment_id == assignment.id)
+        .order_by(Submission.created_at.desc())
+    ).all()
+    manual_reviews = db.scalars(
+        select(ManualReview).where(
+            ManualReview.assignment_id == assignment.id,
+            ManualReview.teacher_id == current_teacher.id,
+        )
+    ).all()
+    manual_by_submission = {item.submission_id: item for item in manual_reviews}
+
+    items: list[AssignmentGradingQueueItem] = []
+    manual_draft_count = 0
+    manual_published_count = 0
+    for submission, student_name in submission_rows:
+        manual = manual_by_submission.get(submission.id)
+        manual_status = "none"
+        manual_total_score = None
+        manual_updated_at = None
+        manual_published_at = None
+        if manual:
+            manual_status = manual.status
+            manual_total_score = manual.total_score
+            manual_updated_at = manual.updated_at
+            manual_published_at = manual.published_at
+            if manual.status == "published":
+                manual_published_count += 1
+            elif manual.status == "draft":
+                manual_draft_count += 1
+
+        items.append(
+            AssignmentGradingQueueItem(
+                submission_id=submission.id,
+                student_id=submission.student_id,
+                student_name=student_name,
+                content_type=submission.content_type,
+                submitted_at=submission.created_at,
+                manual_status=manual_status,  # type: ignore[arg-type]
+                manual_total_score=manual_total_score,
+                manual_updated_at=manual_updated_at,
+                manual_published_at=manual_published_at,
+            )
+        )
+
+    return AssignmentGradingQueueResponse(
+        assignment_id=assignment.id,
+        class_id=assignment.class_id,
+        total_submissions=len(items),
+        manual_draft_count=manual_draft_count,
+        manual_published_count=manual_published_count,
+        items=items,
     )
 
 

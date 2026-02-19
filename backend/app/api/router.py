@@ -6,6 +6,7 @@ from app.api.v1.endpoints.assignments import router as assignments_router
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.classes import router as classes_router
 from app.api.v1.endpoints.health import router as health_router
+from app.api.v1.endpoints.manual_reviews import router as manual_reviews_router
 from app.api.v1.endpoints.reviews import router as reviews_router
 from app.api.v1.endpoints.students import router as students_router
 from app.api.v1.endpoints.submissions import router as submissions_router
@@ -33,5 +34,6 @@ api_router.include_router(account_router, prefix="/auth", tags=["auth-account"])
 api_router.include_router(classes_router, prefix="/classes", tags=["classes"])
 api_router.include_router(assignments_router, prefix="/assignments", tags=["assignments"])
 api_router.include_router(submissions_router, prefix="/submissions", tags=["submissions"])
+api_router.include_router(manual_reviews_router, prefix="/manual-reviews", tags=["manual-reviews"])
 api_router.include_router(reviews_router, prefix="/reviews", tags=["reviews"])
 api_router.include_router(students_router, prefix="/students", tags=["students"])

@@ -165,6 +165,73 @@ export type StudentSubmissionListItem = {
   text_excerpt?: string | null;
 };
 
+export type ManualReviewStatus = "draft" | "published";
+export type ManualReviewQueueStatus = "none" | "draft" | "published";
+
+export type ManualReviewItem = {
+  review_id: string;
+  submission_id: string;
+  assignment_id: string;
+  class_id: string;
+  student_id: string;
+  teacher_id: string;
+  structure_score: number;
+  language_score: number;
+  value_score: number;
+  total_score: number;
+  summary_feedback: string;
+  actionable_suggestions: string[];
+  strengths?: string | null;
+  next_goal?: string | null;
+  status: ManualReviewStatus;
+  version: number;
+  created_at: string;
+  updated_at: string;
+  published_at?: string | null;
+};
+
+export type ManualReviewSubmissionResponse = {
+  submission_id: string;
+  exists: boolean;
+  review?: ManualReviewItem | null;
+};
+
+export type ManualReviewDraftRequest = {
+  submission_id: string;
+  structure_score: number;
+  language_score: number;
+  value_score: number;
+  summary_feedback: string;
+  actionable_suggestions: string[];
+  strengths?: string;
+  next_goal?: string;
+};
+
+export type ManualReviewPublishRequest = {
+  submission_id: string;
+};
+
+export type AssignmentGradingQueueItem = {
+  submission_id: string;
+  student_id: string;
+  student_name: string;
+  content_type: SubmissionContentType;
+  submitted_at: string;
+  manual_status: ManualReviewQueueStatus;
+  manual_total_score?: number | null;
+  manual_updated_at?: string | null;
+  manual_published_at?: string | null;
+};
+
+export type AssignmentGradingQueueResponse = {
+  assignment_id: string;
+  class_id: string;
+  total_submissions: number;
+  manual_draft_count: number;
+  manual_published_count: number;
+  items: AssignmentGradingQueueItem[];
+};
+
 export type ReviewAgentName = "structure" | "language" | "value";
 
 export type RunSubmissionReviewRequest = {

@@ -1,6 +1,7 @@
 import type {
   AccountRegisterRequest,
   AccountRegisterResponse,
+  AssignmentGradingQueueResponse,
   AssignmentDetailResponse,
   AssignmentListItem,
   ClassListItem,
@@ -15,6 +16,10 @@ import type {
   JoinClassResponse,
   LoginRequest,
   LoginResponse,
+  ManualReviewDraftRequest,
+  ManualReviewItem,
+  ManualReviewPublishRequest,
+  ManualReviewSubmissionResponse,
   ReviewSummaryRequest,
   ReviewSummaryResponse,
   RunSubmissionReviewRequest,
@@ -35,7 +40,8 @@ const API_ERROR_MESSAGES: Record<string, string> = {
   "Assignment due date has passed": "任务已截止，无法继续提交。",
   "Assignment is not open for submission": "当前任务未开放提交。",
   "Unsupported image file type": "图片格式不支持，请使用 jpg/jpeg/png/webp/gif。",
-  "Unsupported document file type": "文档格式不支持，请使用 doc/docx/pdf/txt/md。"
+  "Unsupported document file type": "文档格式不支持，请使用 doc/docx/pdf/txt/md。",
+  "Manual review draft not found": "尚未保存手工批改草稿，请先保存。"
 };
 
 type ErrorDetailItem = {
@@ -263,6 +269,12 @@ export function getAssignmentDetail(assignmentId: string): Promise<AssignmentDet
   });
 }
 
+export function getAssignmentGradingQueue(assignmentId: string): Promise<AssignmentGradingQueueResponse> {
+  return apiRequest<AssignmentGradingQueueResponse>(`/api/v1/assignments/${assignmentId}/grading-queue`, {
+    method: "GET"
+  });
+}
+
 export function createCompositionSubmission(
   payload: CreateCompositionSubmissionRequest
 ): Promise<CreateCompositionSubmissionResponse> {
@@ -293,6 +305,26 @@ export function getStudentMemory(studentId: string): Promise<StudentMemoryRespon
 
 export function createReviewSummary(payload: ReviewSummaryRequest): Promise<ReviewSummaryResponse> {
   return apiRequest<ReviewSummaryResponse>("/api/v1/reviews/summary", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getManualReviewForSubmission(submissionId: string): Promise<ManualReviewSubmissionResponse> {
+  return apiRequest<ManualReviewSubmissionResponse>(`/api/v1/manual-reviews/submission/${submissionId}`, {
+    method: "GET"
+  });
+}
+
+export function saveManualReviewDraft(payload: ManualReviewDraftRequest): Promise<ManualReviewItem> {
+  return apiRequest<ManualReviewItem>("/api/v1/manual-reviews/draft", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function publishManualReview(payload: ManualReviewPublishRequest): Promise<ManualReviewItem> {
+  return apiRequest<ManualReviewItem>("/api/v1/manual-reviews/publish", {
     method: "POST",
     body: JSON.stringify(payload)
   });

@@ -9,8 +9,12 @@ import {
   createCompositionSubmission,
   createAssignment,
   createClass,
+  getAssignmentGradingQueue,
+  getManualReviewForSubmission,
   getMyProgress,
   listMySubmissions,
+  publishManualReview,
+  saveManualReviewDraft,
   getAssignmentDetail,
   getStudentMemory,
   joinClass,
@@ -382,6 +386,175 @@ describe("frontend smoke", () => {
         method: "POST",
         body: JSON.stringify({ submission_id: "sub-1" })
       })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("gets manual review for submission via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          submission_id: "sub-1",
+          exists: true,
+          review: {
+            review_id: "mr-1",
+            submission_id: "sub-1",
+            assignment_id: "asg-1",
+            class_id: "class-1",
+            student_id: "student-1",
+            teacher_id: "teacher-1",
+            structure_score: 86,
+            language_score: 88,
+            value_score: 90,
+            total_score: 88,
+            summary_feedback: "结构清楚，细节可再加强。",
+            actionable_suggestions: ["补充动作细节。", "结尾增加反思。"],
+            status: "draft",
+            version: 1,
+            created_at: "2026-02-19T02:00:00Z",
+            updated_at: "2026-02-19T02:00:00Z",
+            published_at: null
+          }
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await getManualReviewForSubmission("sub-1");
+    expect(data.exists).toBe(true);
+    expect(data.review?.total_score).toBe(88);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/manual-reviews/submission/sub-1",
+      expect.objectContaining({ method: "GET" })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("saves manual review draft via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          review_id: "mr-1",
+          submission_id: "sub-1",
+          assignment_id: "asg-1",
+          class_id: "class-1",
+          student_id: "student-1",
+          teacher_id: "teacher-1",
+          structure_score: 86,
+          language_score: 88,
+          value_score: 90,
+          total_score: 88,
+          summary_feedback: "结构清楚，细节可再加强。",
+          actionable_suggestions: ["补充动作细节。", "结尾增加反思。"],
+          status: "draft",
+          version: 1,
+          created_at: "2026-02-19T02:00:00Z",
+          updated_at: "2026-02-19T02:00:00Z",
+          published_at: null
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const payload = {
+      submission_id: "sub-1",
+      structure_score: 86,
+      language_score: 88,
+      value_score: 90,
+      summary_feedback: "结构清楚，细节可再加强。",
+      actionable_suggestions: ["补充动作细节。", "结尾增加反思。"]
+    };
+    const data = await saveManualReviewDraft(payload);
+    expect(data.status).toBe("draft");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/manual-reviews/draft",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(payload)
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("publishes manual review via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          review_id: "mr-1",
+          submission_id: "sub-1",
+          assignment_id: "asg-1",
+          class_id: "class-1",
+          student_id: "student-1",
+          teacher_id: "teacher-1",
+          structure_score: 86,
+          language_score: 88,
+          value_score: 90,
+          total_score: 88,
+          summary_feedback: "结构清楚，细节可再加强。",
+          actionable_suggestions: ["补充动作细节。", "结尾增加反思。"],
+          status: "published",
+          version: 2,
+          created_at: "2026-02-19T02:00:00Z",
+          updated_at: "2026-02-19T02:10:00Z",
+          published_at: "2026-02-19T02:10:00Z"
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await publishManualReview({ submission_id: "sub-1" });
+    expect(data.status).toBe("published");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/manual-reviews/publish",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ submission_id: "sub-1" })
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("gets assignment grading queue via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          assignment_id: "asg-1",
+          class_id: "class-1",
+          total_submissions: 1,
+          manual_draft_count: 0,
+          manual_published_count: 1,
+          items: [
+            {
+              submission_id: "sub-1",
+              student_id: "student-1",
+              student_name: "小明",
+              content_type: "text",
+              submitted_at: "2026-02-19T01:00:00Z",
+              manual_status: "published",
+              manual_total_score: 88,
+              manual_updated_at: "2026-02-19T02:10:00Z",
+              manual_published_at: "2026-02-19T02:10:00Z"
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await getAssignmentGradingQueue("asg-1");
+    expect(data.total_submissions).toBe(1);
+    expect(data.items[0].manual_status).toBe("published");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/assignments/asg-1/grading-queue",
+      expect.objectContaining({ method: "GET" })
     );
 
     vi.unstubAllGlobals();
