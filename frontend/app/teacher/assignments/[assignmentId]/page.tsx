@@ -3,11 +3,17 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { getAssignmentDetail, getStudentMemory, runSubmissionReview } from "@/lib/api/client";
+import {
+  createReviewSummary,
+  getAssignmentDetail,
+  getStudentMemory,
+  runSubmissionReview
+} from "@/lib/api/client";
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
 import type {
   AssignmentDetailResponse,
   ReviewAgentName,
+  ReviewSummaryResponse,
   StudentMemoryResponse,
   UserProfile
 } from "@/lib/api/types";
@@ -28,6 +34,8 @@ export default function TeacherAssignmentDetailPage() {
   const [memoryLoadingStudentId, setMemoryLoadingStudentId] = useState("");
   const [selectedMemoryStudentId, setSelectedMemoryStudentId] = useState("");
   const [memoryData, setMemoryData] = useState<StudentMemoryResponse | null>(null);
+  const [summaryBySubmissionId, setSummaryBySubmissionId] = useState<Record<string, ReviewSummaryResponse>>({});
+  const [summarizingSubmissionId, setSummarizingSubmissionId] = useState("");
   const [toast, setToast] = useState<{ type: "ok" | "error"; message: string } | null>(null);
 
   useEffect(() => {
@@ -104,6 +112,24 @@ export default function TeacherAssignmentDetailPage() {
       setToast({ type: "error", message: `记忆加载失败：${(memoryError as Error).message}` });
     } finally {
       setMemoryLoadingStudentId("");
+    }
+  };
+
+  const generateSummary = async (submissionId: string) => {
+    setSummarizingSubmissionId(submissionId);
+    setToast(null);
+    try {
+      const payload = await createReviewSummary({ submission_id: submissionId });
+      setSummaryBySubmissionId((prev) => ({ ...prev, [submissionId]: payload }));
+      await loadDetail();
+      setToast({
+        type: "ok",
+        message: `汇总报告已生成，总分 ${payload.total_score}`
+      });
+    } catch (summaryError) {
+      setToast({ type: "error", message: `汇总失败：${(summaryError as Error).message}` });
+    } finally {
+      setSummarizingSubmissionId("");
     }
   };
 
@@ -254,7 +280,34 @@ export default function TeacherAssignmentDetailPage() {
                           >
                             {memoryLoadingStudentId === submission.student_id ? "加载中..." : "查看长期记忆"}
                           </button>
+                          <button
+                            className="btn-seal px-3 py-1 text-xs"
+                            onClick={() => {
+                              void generateSummary(submission.submission_id);
+                            }}
+                            type="button"
+                            disabled={summarizingSubmissionId === submission.submission_id}
+                          >
+                            {summarizingSubmissionId === submission.submission_id ? "汇总中..." : "生成多 Agent 汇总"}
+                          </button>
                         </div>
+                        {summaryBySubmissionId[submission.submission_id] ? (
+                          <div className="mt-3 rounded-md border border-slate-300/50 bg-slate-50 px-3 py-3 text-xs">
+                            <p className="font-semibold">
+                              汇总总分：{summaryBySubmissionId[submission.submission_id].total_score}
+                            </p>
+                            <p>
+                              雷达：结构 {summaryBySubmissionId[submission.submission_id].radar.structure} · 语言{" "}
+                              {summaryBySubmissionId[submission.submission_id].radar.language} · 立意{" "}
+                              {summaryBySubmissionId[submission.submission_id].radar.value}
+                            </p>
+                            <ul className="mt-2 list-disc pl-4">
+                              {summaryBySubmissionId[submission.submission_id].actionable_suggestions.map((item) => (
+                                <li key={item}>{item}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
                       </li>
                     ))
                   )}

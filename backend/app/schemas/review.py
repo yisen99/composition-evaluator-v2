@@ -21,6 +21,34 @@ class RunReviewResponse(BaseModel):
     agent_name: ReviewAgentName
     score: int
     feedback: str
+    rewrite_suggestions: list[str]
     memory_note_id: str
     status: str
     created_at: datetime
+
+
+class ReviewSummaryRequest(BaseModel):
+    submission_id: str
+
+
+class ReviewDimensionScore(BaseModel):
+    structure: int
+    language: int
+    value: int
+
+
+class ReviewSummaryItem(BaseModel):
+    agent_name: ReviewAgentName
+    score: int
+    feedback: str
+
+
+class ReviewSummaryResponse(BaseModel):
+    submission_id: str
+    assignment_id: str
+    class_id: str
+    student_id: str
+    total_score: int
+    radar: ReviewDimensionScore
+    items: list[ReviewSummaryItem]
+    actionable_suggestions: list[str]

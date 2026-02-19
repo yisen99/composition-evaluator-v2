@@ -148,6 +148,7 @@ export type RunSubmissionReviewResponse = {
   agent_name: ReviewAgentName;
   score: number;
   feedback: string;
+  rewrite_suggestions: string[];
   memory_note_id: string;
   status: string;
   created_at: string;
@@ -171,4 +172,60 @@ export type StudentMemoryResponse = {
   student_id: string;
   total: number;
   items: StudentMemoryItem[];
+};
+
+export type ReviewSummaryRequest = {
+  submission_id: string;
+};
+
+export type ReviewSummaryItem = {
+  agent_name: ReviewAgentName;
+  score: number;
+  feedback: string;
+};
+
+export type ReviewSummaryResponse = {
+  submission_id: string;
+  assignment_id: string;
+  class_id: string;
+  student_id: string;
+  total_score: number;
+  radar: {
+    structure: number;
+    language: number;
+    value: number;
+  };
+  items: ReviewSummaryItem[];
+  actionable_suggestions: string[];
+};
+
+export type StudentProgressSubmissionItem = {
+  submission_id: string;
+  assignment_id: string;
+  assignment_title: string;
+  class_id: string;
+  class_name: string;
+  content_type: SubmissionContentType;
+  submitted_at: string;
+  structure_score?: number | null;
+  language_score?: number | null;
+  value_score?: number | null;
+  total_score?: number | null;
+};
+
+export type StudentProgressPoint = {
+  index: number;
+  submitted_at: string;
+  total_score?: number | null;
+};
+
+export type StudentProgressResponse = {
+  student_id: string;
+  total_submissions: number;
+  latest_score?: number | null;
+  average_score?: number | null;
+  best_score?: number | null;
+  score_delta_from_first?: number | null;
+  trajectory: StudentProgressPoint[];
+  submissions: StudentProgressSubmissionItem[];
 };

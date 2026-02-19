@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { createCompositionSubmission, joinClass, listAssignments, listClasses } from "@/lib/api/client";
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
@@ -162,6 +163,9 @@ export default function StudentPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="seal-chip">学生工作台 · 入班与作文提交</span>
             <div className="flex items-center gap-3 text-sm text-slate-700">
+              <Link className="underline" href="/student/progress">
+                成长轨迹
+              </Link>
               <span>
                 {currentUser.display_name} · {currentUser.phone}
               </span>

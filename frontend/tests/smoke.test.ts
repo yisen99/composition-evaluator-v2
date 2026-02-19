@@ -2,9 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   buildApiPath,
   checkHealth,
+  createReviewSummary,
   createCompositionSubmission,
   createAssignment,
   createClass,
+  getMyProgress,
   getAssignmentDetail,
   getStudentMemory,
   joinClass,
@@ -338,6 +340,74 @@ describe("frontend smoke", () => {
       expect.objectContaining({
         method: "GET"
       })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("creates review summary via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          submission_id: "sub-1",
+          assignment_id: "asg-1",
+          class_id: "class-1",
+          student_id: "student-1",
+          total_score: 85,
+          radar: { structure: 84, language: 86, value: 85 },
+          items: [
+            { agent_name: "structure", score: 84, feedback: "结构较清晰。" },
+            { agent_name: "language", score: 86, feedback: "语言较准确。" },
+            { agent_name: "value", score: 85, feedback: "立意较完整。" }
+          ],
+          actionable_suggestions: ["补充细节描写。", "结尾增加反思。"]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await createReviewSummary({ submission_id: "sub-1" });
+    expect(data.total_score).toBe(85);
+    expect(data.items).toHaveLength(3);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/reviews/summary",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ submission_id: "sub-1" })
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("gets student progress via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          student_id: "student-1",
+          total_submissions: 2,
+          latest_score: 86,
+          average_score: 83,
+          best_score: 86,
+          score_delta_from_first: 6,
+          trajectory: [
+            { index: 1, submitted_at: "2026-02-18T01:00:00Z", total_score: 80 },
+            { index: 2, submitted_at: "2026-02-19T01:00:00Z", total_score: 86 }
+          ],
+          submissions: []
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await getMyProgress();
+    expect(data.total_submissions).toBe(2);
+    expect(data.latest_score).toBe(86);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/students/me/progress",
+      expect.objectContaining({ method: "GET" })
     );
 
     vi.unstubAllGlobals();

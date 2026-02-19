@@ -13,10 +13,13 @@ import type {
   JoinClassResponse,
   LoginRequest,
   LoginResponse,
+  ReviewSummaryRequest,
+  ReviewSummaryResponse,
   RunSubmissionReviewRequest,
   RunSubmissionReviewResponse,
   SendCodeRequest,
   SendCodeResponse,
+  StudentProgressResponse,
   StudentMemoryResponse
 } from "@/lib/api/types";
 import { getAccessToken } from "@/lib/auth/session";
@@ -152,6 +155,19 @@ export function runSubmissionReview(payload: RunSubmissionReviewRequest): Promis
 
 export function getStudentMemory(studentId: string): Promise<StudentMemoryResponse> {
   return apiRequest<StudentMemoryResponse>(`/api/v1/students/${studentId}/memory`, {
+    method: "GET"
+  });
+}
+
+export function createReviewSummary(payload: ReviewSummaryRequest): Promise<ReviewSummaryResponse> {
+  return apiRequest<ReviewSummaryResponse>("/api/v1/reviews/summary", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getMyProgress(): Promise<StudentProgressResponse> {
+  return apiRequest<StudentProgressResponse>("/api/v1/students/me/progress", {
     method: "GET"
   });
 }

@@ -410,9 +410,18 @@ def test_teacher_can_run_agent_review_and_fetch_student_memory() -> None:
             headers={"Authorization": f"Bearer {teacher_token}"},
             json={"submission_id": submission_payload["submission_id"], "agent_name": "value"},
         )
+        summary_response = client.post(
+            "/api/v1/reviews/summary",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={"submission_id": submission_payload["submission_id"]},
+        )
         memory_response = client.get(
             f"/api/v1/students/{student_user['id']}/memory",
             headers={"Authorization": f"Bearer {teacher_token}"},
+        )
+        student_progress_response = client.get(
+            "/api/v1/students/me/progress",
+            headers={"Authorization": f"Bearer {student_token}"},
         )
 
     assert forbidden_review_response.status_code == 403
@@ -421,8 +430,24 @@ def test_teacher_can_run_agent_review_and_fetch_student_memory() -> None:
     assert review_payload["submission_id"] == submission_payload["submission_id"]
     assert review_payload["agent_name"] == "value"
     assert review_payload["memory_note_id"]
+    assert review_payload["rewrite_suggestions"]
+
+    assert summary_response.status_code == 200
+    summary_payload = summary_response.json()
+    assert summary_payload["submission_id"] == submission_payload["submission_id"]
+    assert summary_payload["radar"]["structure"] >= 0
+    assert summary_payload["radar"]["language"] >= 0
+    assert summary_payload["radar"]["value"] >= 0
+    assert summary_payload["actionable_suggestions"]
+    assert len(summary_payload["items"]) == 3
 
     assert memory_response.status_code == 200
     memory_payload = memory_response.json()
     assert len(memory_payload["items"]) >= 1
     assert memory_payload["items"][0]["student_id"] == student_user["id"]
+
+    assert student_progress_response.status_code == 200
+    progress_payload = student_progress_response.json()
+    assert progress_payload["student_id"] == student_user["id"]
+    assert progress_payload["total_submissions"] >= 1
+    assert len(progress_payload["trajectory"]) >= 1

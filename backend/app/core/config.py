@@ -14,6 +14,10 @@ class Settings(BaseModel):
     auth_fixed_code: str | None = "123456"
     storage_root: str = "./storage/uploads"
     storage_public_base_url: str = "/storage/uploads"
+    qwen_api_key: str | None = None
+    qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    qwen_model: str = "qwen-max"
+    qwen_timeout_seconds: int = 30
 
 
 settings = Settings(
@@ -27,4 +31,8 @@ settings = Settings(
     auth_fixed_code=os.getenv("AUTH_FIXED_CODE", "123456"),
     storage_root=os.getenv("STORAGE_ROOT", "./storage/uploads"),
     storage_public_base_url=os.getenv("STORAGE_PUBLIC_BASE_URL", "/storage/uploads"),
+    qwen_api_key=os.getenv("QWEN_API_KEY"),
+    qwen_base_url=os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+    qwen_model=os.getenv("QWEN_MODEL", "qwen-max"),
+    qwen_timeout_seconds=int(os.getenv("QWEN_TIMEOUT_SECONDS", "30")),
 )
