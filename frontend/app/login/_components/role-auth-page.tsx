@@ -1,9 +1,9 @@
 "use client";
 
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, loginWithPassword, registerAccount, sendCode } from "@/lib/api/client";
-import { saveAuthSession } from "@/lib/auth/session";
+import { clearAuthSession, getAuthSession, saveAuthSession } from "@/lib/auth/session";
 
 type Toast = {
   type: "ok" | "error";
@@ -39,16 +39,37 @@ export function RoleAuthPage({ role, allowSms }: RoleAuthPageProps) {
   const [sendingCode, setSendingCode] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [activeRole, setActiveRole] = useState<AuthRole | null>(null);
+  const [activeDisplayName, setActiveDisplayName] = useState("");
 
   const roleLabel = role === "teacher" ? "老师" : "学生";
   const oppositeRoleLabel = role === "teacher" ? "学生" : "老师";
   const oppositeRolePath = role === "teacher" ? "/login/student" : "/login/teacher";
+  const workspacePath = role === "teacher" ? "/teacher" : "/student";
+  const activeWorkspacePath = activeRole === "teacher" ? "/teacher" : "/student";
+  const activeRoleLabel = activeRole === "teacher" ? "老师" : "学生";
   const smsTip = useMemo(() => {
     if (!allowSms) {
       return "当前页面仅支持账号密码登录。";
     }
     return "支持账号密码登录，也可用短信验证码快捷登录。";
   }, [allowSms]);
+
+  useEffect(() => {
+    const session = getAuthSession();
+    if (!session) {
+      return;
+    }
+    setActiveRole(session.user.role);
+    setActiveDisplayName(session.user.display_name);
+  }, []);
+
+  const onLogoutCurrentSession = () => {
+    clearAuthSession();
+    setActiveRole(null);
+    setActiveDisplayName("");
+    setToast({ type: "ok", message: "已退出当前账号，请继续完成登录。" });
+  };
 
   const onSendCode = async () => {
     setSendingCode(true);
@@ -132,6 +153,44 @@ export function RoleAuthPage({ role, allowSms }: RoleAuthPageProps) {
   return (
     <main className="mx-auto min-h-screen max-w-4xl p-6 md:p-10">
       <section className="poster-shell p-6 md:p-10">
+        {activeRole ? (
+          <div
+            className={`relative z-10 mb-4 rounded-xl border px-4 py-3 text-sm ${
+              activeRole === role
+                ? "border-emerald-700/35 bg-emerald-50 text-emerald-900"
+                : "border-amber-700/35 bg-amber-50 text-amber-900"
+            }`}
+          >
+            {activeRole === role ? (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p>
+                  当前已登录为{roleLabel}账号：{activeDisplayName}。可以直接进入工作台。
+                </p>
+                <div className="flex gap-3">
+                  <a className="underline" href={workspacePath}>
+                    直接进入工作台
+                  </a>
+                  <button className="underline" type="button" onClick={onLogoutCurrentSession}>
+                    退出后换账号
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p>当前登录身份为{activeRoleLabel}，与此页面不一致。请先退出后再切换登录。</p>
+                <div className="flex gap-3">
+                  <a className="underline" href={activeWorkspacePath}>
+                    返回当前工作台
+                  </a>
+                  <button className="underline" type="button" onClick={onLogoutCurrentSession}>
+                    退出当前账号
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
+
         <div className="relative z-10 grid gap-6 md:grid-cols-2">
           <div>
             <span className="seal-chip">真实登录态</span>
@@ -142,6 +201,13 @@ export function RoleAuthPage({ role, allowSms }: RoleAuthPageProps) {
             </p>
             <div className="mt-4 rounded-xl border border-amber-700/30 bg-amber-50 px-4 py-3 text-xs text-amber-900">
               {smsTip}
+            </div>
+            <div className="mt-4 grid gap-2 text-xs text-slate-700">
+              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">第 1 步：确认当前是{roleLabel}身份</p>
+              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">
+                第 2 步：完成{roleLabel}账号注册或登录
+              </p>
+              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">第 3 步：进入{roleLabel}工作台开始操作</p>
             </div>
             {allowSms ? (
               <div className="mt-4 flex gap-2">
