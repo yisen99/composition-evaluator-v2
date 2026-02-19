@@ -74,3 +74,36 @@ def test_account_register_and_password_login_contract() -> None:
         )
 
     assert create_class_response.status_code == 201
+
+
+def test_account_register_with_duplicate_phone_returns_client_error() -> None:
+    with TestClient(app) as client:
+        suffix = str(time.time_ns() % 100_000_000).zfill(8)
+        phone = f"138{suffix}"
+        email_a = f"teacher_dup_a_{time.time_ns()}@example.com"
+        email_b = f"teacher_dup_b_{time.time_ns()}@example.com"
+
+        first_register = client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": email_a,
+                "password": "SecurePass123!",
+                "role": "teacher",
+                "display_name": "老师A",
+                "phone": phone,
+            },
+        )
+        assert first_register.status_code == 201
+
+        second_register = client.post(
+            "/api/v1/auth/register",
+            json={
+                "email": email_b,
+                "password": "SecurePass123!",
+                "role": "teacher",
+                "display_name": "老师B",
+                "phone": phone,
+            },
+        )
+
+    assert second_register.status_code == 400

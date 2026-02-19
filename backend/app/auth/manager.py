@@ -6,6 +6,7 @@ from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, exceptions
 from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
 from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -32,24 +33,56 @@ class AuthAccountManager(UUIDIDMixin, BaseUserManager[AuthAccount, uuid.UUID]):
                 reason="Password should be at least 8 characters"
             )
 
+    async def create(
+        self,
+        user_create: AuthAccountCreate,
+        safe: bool = False,
+        request: Optional[Request] = None,
+    ) -> AuthAccount:
+        normalized_phone = _safe_normalize_phone(user_create.phone)
+        if normalized_phone and _is_account_phone_taken(normalized_phone):
+            raise exceptions.UserAlreadyExists()
+
+        normalized_create = user_create.model_copy(update={"phone": normalized_phone})
+        return await super().create(normalized_create, safe=safe, request=request)
+
     async def on_after_register(self, user: AuthAccount, request: Optional[Request] = None) -> None:
         normalized_phone = _safe_normalize_phone(user.phone)
         db = SessionLocal()
         try:
             domain_user = db.get(User, str(user.id))
+            mapped_phone = _domain_phone_or_none(db, normalized_phone, domain_user_id=str(user.id))
             if not domain_user:
                 domain_user = User(
                     id=str(user.id),
                     role=user.role,
-                    phone=normalized_phone,
+                    phone=mapped_phone,
                     display_name=user.display_name,
                 )
                 db.add(domain_user)
             else:
                 domain_user.role = user.role
-                domain_user.phone = normalized_phone
+                domain_user.phone = mapped_phone
                 domain_user.display_name = user.display_name
-            db.commit()
+            try:
+                db.commit()
+            except IntegrityError:
+                db.rollback()
+                # Keep registration successful; drop conflicting phone link in domain profile.
+                domain_user = db.get(User, str(user.id))
+                if not domain_user:
+                    domain_user = User(
+                        id=str(user.id),
+                        role=user.role,
+                        phone=None,
+                        display_name=user.display_name,
+                    )
+                    db.add(domain_user)
+                else:
+                    domain_user.phone = None
+                    domain_user.role = user.role
+                    domain_user.display_name = user.display_name
+                db.commit()
         finally:
             db.close()
 
@@ -63,11 +96,12 @@ class AuthAccountManager(UUIDIDMixin, BaseUserManager[AuthAccount, uuid.UUID]):
         try:
             domain_user = db.scalar(select(User).where(User.id == str(user.id)))
             if domain_user is None:
+                mapped_phone = _domain_phone_or_none(db, _safe_normalize_phone(user.phone), domain_user_id=str(user.id))
                 db.add(
                     User(
                         id=str(user.id),
                         role=user.role,
-                        phone=_safe_normalize_phone(user.phone),
+                        phone=mapped_phone,
                         display_name=user.display_name,
                     )
                 )
@@ -117,3 +151,27 @@ def _safe_normalize_phone(phone: str | None) -> str | None:
         return normalize_phone(phone)
     except ValueError:
         return None
+
+
+def _is_account_phone_taken(phone: str) -> bool:
+    db = SessionLocal()
+    try:
+        account_taken = db.scalar(select(AuthAccount.id).where(AuthAccount.phone == phone).limit(1))
+        domain_taken = db.scalar(select(User.id).where(User.phone == phone).limit(1))
+        return bool(account_taken or domain_taken)
+    finally:
+        db.close()
+
+
+def _domain_phone_or_none(db, phone: str | None, domain_user_id: str) -> str | None:
+    if not phone:
+        return None
+    conflict = db.scalar(
+        select(User.id)
+        .where(
+            User.phone == phone,
+            User.id != domain_user_id,
+        )
+        .limit(1)
+    )
+    return None if conflict else phone
