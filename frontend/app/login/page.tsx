@@ -1,32 +1,71 @@
 export default function LoginEntryPage() {
   return (
-    <main className="mx-auto min-h-screen max-w-5xl p-6 md:p-10">
+    <main className="mx-auto min-h-screen max-w-6xl p-6 md:p-10">
       <section className="poster-shell p-6 md:p-10">
         <div className="relative z-10 flex flex-col gap-8">
           <div className="space-y-3">
             <span className="seal-chip">身份入口</span>
             <h1 className="poster-title text-4xl font-bold md:text-5xl">选择登录身份</h1>
             <p className="max-w-2xl text-base text-slate-700 md:text-lg">
-              老师与学生使用独立登录入口。老师使用账号密码；学生支持账号密码和短信快捷登录。
+              从这里开始按身份分流。先选角色，再完成注册/登录，最后自动进入对应工作台。
             </p>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <a className="paper-card p-6" href="/login/teacher">
-              <p className="label">Teacher</p>
-              <h2 className="mt-2 text-3xl font-semibold">老师登录/注册</h2>
-              <p className="mt-2 text-sm text-slate-700">使用邮箱密码注册与登录，进入教师工作台。</p>
-            </a>
-            <a className="paper-card p-6" href="/login/student">
-              <p className="label">Student</p>
-              <h2 className="mt-2 text-3xl font-semibold">学生登录/注册</h2>
-              <p className="mt-2 text-sm text-slate-700">支持邮箱密码与短信快捷登录，进入学生工作台。</p>
-            </a>
+          <div className="paper-card p-5">
+            <p className="label">统一流程</p>
+            <div className="mt-3 grid gap-3 text-sm text-slate-700 md:grid-cols-3">
+              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">第 1 步：选择老师或学生</p>
+              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">第 2 步：在对应页面注册或登录</p>
+              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">第 3 步：进入对应工作台继续操作</p>
+            </div>
           </div>
 
-          <div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="paper-card p-6">
+              <p className="label">Teacher Path</p>
+              <h2 className="mt-2 text-3xl font-semibold">我是老师</h2>
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                <p>1. 使用邮箱密码注册/登录</p>
+                <p>2. 进入教师工作台建班与发布任务</p>
+                <p>3. 在任务详情页进行批改与查看记忆</p>
+              </div>
+              <a className="btn-ink mt-4 inline-block text-sm" href="/login/teacher">
+                进入老师登录
+              </a>
+            </div>
+            <div className="paper-card p-6">
+              <p className="label">Student Path</p>
+              <h2 className="mt-2 text-3xl font-semibold">我是学生</h2>
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                <p>1. 使用账号密码或短信快捷登录</p>
+                <p>2. 进入学生工作台输入班级码</p>
+                <p>3. 选择任务并提交作文</p>
+              </div>
+              <a className="btn-seal mt-4 inline-block text-sm" href="/login/student">
+                进入学生登录
+              </a>
+            </div>
+          </div>
+
+          <div className="paper-card p-5">
+            <p className="label">常见问题</p>
+            <div className="mt-3 space-y-2 text-sm text-slate-700">
+              <p>Q: 我是老师，能用短信登录吗？</p>
+              <p>A: 老师请使用邮箱密码登录；短信快捷登录仅用于学生路径。</p>
+              <p>Q: 不确定选哪一个入口怎么办？</p>
+              <p>A: 按当前实际身份选择；进入后会按权限自动限制页面操作。</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-4">
             <a className="text-sm text-slate-700 underline" href="/">
               返回首页
+            </a>
+            <a className="text-sm text-slate-700 underline" href="/teacher">
+              已登录老师，直达教师工作台
+            </a>
+            <a className="text-sm text-slate-700 underline" href="/student">
+              已登录学生，直达学生工作台
             </a>
           </div>
         </div>
