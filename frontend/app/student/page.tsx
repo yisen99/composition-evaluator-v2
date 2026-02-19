@@ -4,6 +4,7 @@ import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { createCompositionSubmission, joinClass, listAssignments, listClasses, listMySubmissions } from "@/lib/api/client";
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
+import { buildAssignmentSubmissionGuard } from "@/lib/submission/assignment-guard";
 import { validateSubmissionDraft } from "@/lib/submission/validation";
 import type { AssignmentListItem, ClassListItem, StudentSubmissionListItem, SubmissionContentType, UserProfile } from "@/lib/api/types";
 
@@ -64,6 +65,14 @@ export default function StudentPage() {
     () => assignmentList.filter((item) => !selectedClassId || item.class_id === selectedClassId),
     [assignmentList, selectedClassId]
   );
+  const selectedAssignment = useMemo(
+    () => visibleAssignments.find((item) => item.assignment_id === selectedAssignmentId) ?? null,
+    [selectedAssignmentId, visibleAssignments]
+  );
+  const assignmentGuard = useMemo(
+    () => buildAssignmentSubmissionGuard(selectedAssignment),
+    [selectedAssignment]
+  );
 
   useEffect(() => {
     if (visibleAssignments.length === 0) {
@@ -105,8 +114,8 @@ export default function StudentPage() {
 
   const onSubmitComposition = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedAssignmentId) {
-      setToast({ type: "error", message: "请先选择要提交的任务。" });
+    if (!assignmentGuard.allowed) {
+      setToast({ type: "error", message: assignmentGuard.reason || "当前任务不可提交。" });
       return;
     }
     const validationError = validateSubmissionDraft({
@@ -243,12 +252,24 @@ export default function StudentPage() {
                   onChange={(event) => setSelectedAssignmentId(event.target.value)}
                 >
                   <option value="">请选择任务</option>
-                  {visibleAssignments.map((item) => (
-                    <option key={item.assignment_id} value={item.assignment_id}>
-                      {item.title}
-                    </option>
-                  ))}
+                  {visibleAssignments.map((item) => {
+                    const guard = buildAssignmentSubmissionGuard(item);
+                    return (
+                      <option key={item.assignment_id} value={item.assignment_id}>
+                        {item.title}
+                        {guard.overdue ? "（已截止）" : item.status !== "published" ? "（未发布）" : ""}
+                      </option>
+                    );
+                  })}
                 </select>
+                <p className="mt-2 text-xs text-slate-600">
+                  {selectedAssignment
+                    ? `截止时间：${selectedAssignment.due_at ? new Date(selectedAssignment.due_at).toLocaleString("zh-CN", { hour12: false }) : "未设置"}`
+                    : "请选择任务后查看截止时间。"}
+                </p>
+                {!assignmentGuard.allowed && assignmentGuard.reason ? (
+                  <p className="mt-1 text-xs text-rose-700">{assignmentGuard.reason}</p>
+                ) : null}
               </div>
 
               <div>
@@ -291,7 +312,7 @@ export default function StudentPage() {
                 </div>
               )}
 
-              <button className="btn-ink w-full text-sm" type="submit" disabled={busy === "submit"}>
+              <button className="btn-ink w-full text-sm" type="submit" disabled={busy === "submit" || !assignmentGuard.allowed}>
                 {busy === "submit" ? "提交中..." : "提交作文"}
               </button>
             </form>
@@ -342,13 +363,22 @@ export default function StudentPage() {
                   {visibleAssignments.length === 0 ? (
                     <li className="text-slate-600">当前班级暂无任务。</li>
                   ) : (
-                    visibleAssignments.slice(0, 6).map((item) => (
-                      <li key={item.assignment_id} className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-2">
-                        <p className="font-semibold">{item.title}</p>
-                        <p className="text-xs text-slate-700">任务ID：{item.assignment_id}</p>
-                        <p className="text-xs text-slate-700">状态：{item.status}</p>
-                      </li>
-                    ))
+                    visibleAssignments.slice(0, 6).map((item) => {
+                      const guard = buildAssignmentSubmissionGuard(item);
+                      return (
+                        <li key={item.assignment_id} className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-2">
+                          <p className="font-semibold">
+                            {item.title}
+                            {guard.overdue ? "（已截止）" : item.status !== "published" ? "（未发布）" : ""}
+                          </p>
+                          <p className="text-xs text-slate-700">任务ID：{item.assignment_id}</p>
+                          <p className="text-xs text-slate-700">状态：{item.status}</p>
+                          <p className="text-xs text-slate-700">
+                            截止：{item.due_at ? new Date(item.due_at).toLocaleString("zh-CN", { hour12: false }) : "未设置"}
+                          </p>
+                        </li>
+                      );
+                    })
                   )}
                 </ul>
               </div>
