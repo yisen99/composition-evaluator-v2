@@ -24,6 +24,9 @@ export default function TeacherAssignmentDetailPage() {
     const value = params?.assignmentId;
     return Array.isArray(value) ? value[0] : value;
   }, [params?.assignmentId]);
+  const loginPath = assignmentId
+    ? `/login/teacher?next=${encodeURIComponent(`/teacher/assignments/${assignmentId}`)}`
+    : "/login/teacher?next=%2Fteacher";
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [detail, setDetail] = useState<AssignmentDetailResponse | null>(null);
@@ -140,7 +143,7 @@ export default function TeacherAssignmentDetailPage() {
           <div className="relative z-10 paper-card p-5">
             <h1 className="poster-title text-3xl font-bold">任务详情页需要教师登录</h1>
             <p className="mt-2 text-sm text-slate-700">请先登录教师账号后查看任务详情。</p>
-            <a className="btn-ink mt-4 inline-block text-sm" href="/login/teacher">
+            <a className="btn-ink mt-4 inline-block text-sm" href={loginPath}>
               前往登录
             </a>
           </div>

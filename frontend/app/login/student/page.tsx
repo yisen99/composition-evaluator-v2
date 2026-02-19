@@ -1,5 +1,13 @@
 import { RoleAuthPage } from "../_components/role-auth-page";
 
-export default function StudentLoginPage() {
-  return <RoleAuthPage role="student" allowSms={true} />;
+type StudentLoginPageProps = {
+  searchParams?: {
+    next?: string | string[];
+  };
+};
+
+export default function StudentLoginPage({ searchParams }: StudentLoginPageProps) {
+  const next = searchParams?.next;
+  const requestedNext = Array.isArray(next) ? next[0] : next;
+  return <RoleAuthPage role="student" allowSms={true} requestedNext={requestedNext ?? null} />;
 }

@@ -53,7 +53,7 @@ export default function StudentProgressPage() {
           <div className="relative z-10 paper-card p-5">
             <h1 className="poster-title text-3xl font-bold">成长轨迹页需要学生登录</h1>
             <p className="mt-2 text-sm text-slate-700">请先登录学生账号后查看历史提交与成长记录。</p>
-            <a className="btn-seal mt-4 inline-block text-sm" href="/login/student">
+            <a className="btn-seal mt-4 inline-block text-sm" href="/login/student?next=%2Fstudent%2Fprogress">
               前往登录
             </a>
           </div>

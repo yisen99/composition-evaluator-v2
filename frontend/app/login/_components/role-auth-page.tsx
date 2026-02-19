@@ -4,6 +4,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { login, loginWithPassword, registerAccount, sendCode } from "@/lib/api/client";
 import { clearAuthSession, getAuthSession, saveAuthSession } from "@/lib/auth/session";
+import { resolveRoleAwareRedirectPath, withNextPath } from "@/lib/auth/redirect";
 
 type Toast = {
   type: "ok" | "error";
@@ -15,9 +16,10 @@ type AuthRole = "teacher" | "student";
 type RoleAuthPageProps = {
   role: AuthRole;
   allowSms: boolean;
+  requestedNext?: string | null;
 };
 
-export function RoleAuthPage({ role, allowSms }: RoleAuthPageProps) {
+export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthPageProps) {
   const router = useRouter();
   const [mode, setMode] = useState<"sms" | "password">("password");
   const [passwordMode, setPasswordMode] = useState<"login" | "register">("login");
@@ -45,9 +47,10 @@ export function RoleAuthPage({ role, allowSms }: RoleAuthPageProps) {
   const roleLabel = role === "teacher" ? "老师" : "学生";
   const oppositeRoleLabel = role === "teacher" ? "学生" : "老师";
   const oppositeRolePath = role === "teacher" ? "/login/student" : "/login/teacher";
-  const workspacePath = role === "teacher" ? "/teacher" : "/student";
+  const workspacePath = resolveRoleAwareRedirectPath(role, requestedNext);
   const activeWorkspacePath = activeRole === "teacher" ? "/teacher" : "/student";
   const activeRoleLabel = activeRole === "teacher" ? "老师" : "学生";
+  const oppositeRoleLinkPath = withNextPath(oppositeRolePath, requestedNext);
   const smsTip = useMemo(() => {
     if (!allowSms) {
       return "当前页面仅支持账号密码登录。";
@@ -98,7 +101,7 @@ export function RoleAuthPage({ role, allowSms }: RoleAuthPageProps) {
         display_name: smsDisplayName.trim()
       });
       saveAuthSession(session);
-      const target = session.user.role === "teacher" ? "/teacher" : "/student";
+      const target = resolveRoleAwareRedirectPath(session.user.role, requestedNext);
       router.push(target);
     } catch (error) {
       setToast({ type: "error", message: `登录失败：${(error as Error).message}` });
@@ -141,7 +144,7 @@ export function RoleAuthPage({ role, allowSms }: RoleAuthPageProps) {
     try {
       const session = await loginWithPassword(loginEmail.trim(), loginPassword.trim());
       saveAuthSession(session);
-      const target = session.user.role === "teacher" ? "/teacher" : "/student";
+      const target = resolveRoleAwareRedirectPath(session.user.role, requestedNext);
       router.push(target);
     } catch (error) {
       setToast({ type: "error", message: `登录失败：${(error as Error).message}` });
@@ -323,7 +326,7 @@ export function RoleAuthPage({ role, allowSms }: RoleAuthPageProps) {
                 </>
               )}
 
-              <a href={oppositeRolePath} className="mt-1 text-center text-sm text-slate-700 underline">
+              <a href={oppositeRoleLinkPath} className="mt-1 text-center text-sm text-slate-700 underline">
                 切换到{oppositeRoleLabel}登录
               </a>
               <a href="/" className="text-center text-sm text-slate-700 underline">
@@ -357,7 +360,7 @@ export function RoleAuthPage({ role, allowSms }: RoleAuthPageProps) {
               <button className="btn-seal text-sm" type="submit" disabled={loggingIn}>
                 {loggingIn ? "登录中..." : "登录并进入工作台"}
               </button>
-              <a href={oppositeRolePath} className="mt-1 text-center text-sm text-slate-700 underline">
+              <a href={oppositeRoleLinkPath} className="mt-1 text-center text-sm text-slate-700 underline">
                 切换到{oppositeRoleLabel}登录
               </a>
               <a href="/" className="text-center text-sm text-slate-700 underline">

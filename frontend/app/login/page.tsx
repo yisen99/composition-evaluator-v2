@@ -1,4 +1,17 @@
-export default function LoginEntryPage() {
+import { withNextPath } from "@/lib/auth/redirect";
+
+type LoginEntryPageProps = {
+  searchParams?: {
+    next?: string | string[];
+  };
+};
+
+export default function LoginEntryPage({ searchParams }: LoginEntryPageProps) {
+  const rawNext = searchParams?.next;
+  const next = Array.isArray(rawNext) ? rawNext[0] : rawNext ?? null;
+  const teacherLoginPath = withNextPath("/login/teacher", next);
+  const studentLoginPath = withNextPath("/login/student", next);
+
   return (
     <main className="mx-auto min-h-screen max-w-6xl p-6 md:p-10">
       <section className="poster-shell p-6 md:p-10">
@@ -29,7 +42,7 @@ export default function LoginEntryPage() {
                 <p>2. 进入教师工作台建班与发布任务</p>
                 <p>3. 在任务详情页进行批改与查看记忆</p>
               </div>
-              <a className="btn-ink mt-4 inline-block text-sm" href="/login/teacher">
+              <a className="btn-ink mt-4 inline-block text-sm" href={teacherLoginPath}>
                 进入老师登录
               </a>
             </div>
@@ -41,7 +54,7 @@ export default function LoginEntryPage() {
                 <p>2. 进入学生工作台输入班级码</p>
                 <p>3. 选择任务并提交作文</p>
               </div>
-              <a className="btn-seal mt-4 inline-block text-sm" href="/login/student">
+              <a className="btn-seal mt-4 inline-block text-sm" href={studentLoginPath}>
                 进入学生登录
               </a>
             </div>

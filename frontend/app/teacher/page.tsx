@@ -138,7 +138,7 @@ export default function TeacherPage() {
           <div className="relative z-10 paper-card p-5">
             <h1 className="poster-title text-3xl font-bold">老师页面需要教师登录</h1>
             <p className="mt-2 text-sm text-slate-700">请先登录为老师账号，再进行建班与任务发布操作。</p>
-            <a className="btn-ink mt-4 inline-block text-sm" href="/login/teacher">
+            <a className="btn-ink mt-4 inline-block text-sm" href="/login/teacher?next=%2Fteacher">
               前往登录
             </a>
           </div>
