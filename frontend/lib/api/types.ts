@@ -182,6 +182,20 @@ export type StudentManualFeedbackItem = {
   strengths?: string | null;
   next_goal?: string | null;
   manual_published_at?: string | null;
+  agent_summary?: {
+    total_score?: number | null;
+    radar: {
+      structure?: number | null;
+      language?: number | null;
+      value?: number | null;
+    };
+    items: {
+      agent_name: "structure" | "language" | "value";
+      score: number;
+      feedback: string;
+      created_at: string;
+    }[];
+  } | null;
 };
 
 export type ManualReviewStatus = "draft" | "published";

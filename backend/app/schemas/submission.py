@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 SubmissionContentType = Literal["text", "image", "document"]
+ReviewAgentName = Literal["structure", "language", "value"]
 
 
 class CreateSubmissionResponse(BaseModel):
@@ -32,6 +33,25 @@ class StudentSubmissionListItem(BaseModel):
     text_excerpt: str | None = None
 
 
+class StudentAgentDimensionScore(BaseModel):
+    structure: int | None = None
+    language: int | None = None
+    value: int | None = None
+
+
+class StudentAgentReviewItem(BaseModel):
+    agent_name: ReviewAgentName
+    score: int
+    feedback: str
+    created_at: datetime
+
+
+class StudentAgentSummary(BaseModel):
+    total_score: int | None = None
+    radar: StudentAgentDimensionScore
+    items: list[StudentAgentReviewItem]
+
+
 class StudentManualFeedbackItem(BaseModel):
     submission_id: str
     assignment_id: str
@@ -49,3 +69,4 @@ class StudentManualFeedbackItem(BaseModel):
     strengths: str | None = None
     next_goal: str | None = None
     manual_published_at: datetime | None = None
+    agent_summary: StudentAgentSummary | None = None

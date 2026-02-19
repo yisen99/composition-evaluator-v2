@@ -9,9 +9,12 @@ from sqlalchemy.orm import Session
 from app.api.deps.auth import require_student
 from app.core.config import settings
 from app.db.deps import get_db
-from app.models import Assignment, ClassMember, ClassRoom, ManualReview, Submission, User
+from app.models import Assignment, ClassMember, ClassRoom, ManualReview, Submission, SubmissionReview, User
 from app.schemas.submission import (
     CreateSubmissionResponse,
+    StudentAgentDimensionScore,
+    StudentAgentReviewItem,
+    StudentAgentSummary,
     StudentManualFeedbackItem,
     StudentSubmissionListItem,
     SubmissionContentType,
@@ -22,6 +25,7 @@ router = APIRouter()
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 DOCUMENT_EXTENSIONS = {".doc", ".docx", ".pdf", ".txt", ".md"}
+AGENT_NAMES = ("structure", "language", "value")
 
 
 def _is_assignment_overdue(due_at: datetime | None) -> bool:
@@ -36,6 +40,48 @@ def _ensure_assignment_is_open(assignment: Assignment) -> None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Assignment is not open for submission")
     if _is_assignment_overdue(assignment.due_at):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Assignment due date has passed")
+
+
+def _load_latest_agent_summary(db: Session, *, submission_id: str) -> StudentAgentSummary | None:
+    latest_reviews = db.scalars(
+        select(SubmissionReview)
+        .where(SubmissionReview.submission_id == submission_id)
+        .order_by(SubmissionReview.created_at.desc())
+    ).all()
+
+    by_agent: dict[str, SubmissionReview] = {}
+    for review in latest_reviews:
+        if review.agent_name not in AGENT_NAMES:
+            continue
+        if review.agent_name in by_agent:
+            continue
+        by_agent[review.agent_name] = review
+        if len(by_agent) == len(AGENT_NAMES):
+            break
+
+    if not by_agent:
+        return None
+
+    radar = StudentAgentDimensionScore(
+        structure=by_agent.get("structure").score if by_agent.get("structure") else None,
+        language=by_agent.get("language").score if by_agent.get("language") else None,
+        value=by_agent.get("value").score if by_agent.get("value") else None,
+    )
+    valid_scores = [score for score in (radar.structure, radar.language, radar.value) if score is not None]
+    total_score = round(sum(valid_scores) / len(valid_scores)) if valid_scores else None
+
+    items = [
+        StudentAgentReviewItem(
+            agent_name=agent_name,  # type: ignore[arg-type]
+            score=by_agent[agent_name].score,
+            feedback=by_agent[agent_name].feedback,
+            created_at=by_agent[agent_name].created_at,
+        )
+        for agent_name in AGENT_NAMES
+        if agent_name in by_agent
+    ]
+
+    return StudentAgentSummary(total_score=total_score, radar=radar, items=items)
 
 
 async def _validate_file_before_storage(content_type: SubmissionContentType, file: UploadFile) -> None:
@@ -131,6 +177,7 @@ def list_my_manual_feedback(
             strengths=manual_review.strengths,
             next_goal=manual_review.next_goal,
             manual_published_at=manual_review.published_at,
+            agent_summary=_load_latest_agent_summary(db, submission_id=submission.id),
         )
         for submission, assignment_title, class_name, manual_review in rows
     ]

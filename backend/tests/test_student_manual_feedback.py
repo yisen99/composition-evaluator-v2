@@ -121,6 +121,14 @@ def test_student_can_view_published_manual_feedback() -> None:
     with TestClient(app) as client:
         teacher_token, student_token, submission_id = _seed_submission(client)
 
+        for agent_name in ("structure", "language", "value"):
+            run_response = client.post(
+                "/api/v1/reviews/run",
+                headers={"Authorization": f"Bearer {teacher_token}"},
+                json={"submission_id": submission_id, "agent_name": agent_name},
+            )
+            assert run_response.status_code == 200
+
         save_response = client.post(
             "/api/v1/manual-reviews/draft",
             headers={"Authorization": f"Bearer {teacher_token}"},
@@ -156,6 +164,11 @@ def test_student_can_view_published_manual_feedback() -> None:
     assert payload[0]["manual_total_score"] == 88
     assert payload[0]["summary_feedback"] == "叙事顺序清楚，建议增强动作和心理描写。"
     assert payload[0]["actionable_suggestions"] == ["加入一个人物动作细节。", "结尾补一句点题反思。"]
+    assert payload[0]["agent_summary"]["total_score"] >= 0
+    assert payload[0]["agent_summary"]["radar"]["structure"] >= 0
+    assert payload[0]["agent_summary"]["radar"]["language"] >= 0
+    assert payload[0]["agent_summary"]["radar"]["value"] >= 0
+    assert len(payload[0]["agent_summary"]["items"]) == 3
 
 
 def test_student_cannot_view_draft_manual_feedback() -> None:

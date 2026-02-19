@@ -135,16 +135,39 @@ export default function StudentFeedbackPage() {
                     <p className="mt-1 text-xs text-slate-700">
                       总分 {item.manual_total_score} · 结构 {item.structure_score} · 语言 {item.language_score} · 立意 {item.value_score}
                     </p>
-                    <p className="mt-2 rounded-md border border-slate-200/70 bg-white/80 px-2 py-2 text-xs text-slate-800">
-                      总评：{item.summary_feedback}
-                    </p>
-                    <ul className="mt-2 list-disc pl-5 text-xs text-slate-700">
-                      {item.actionable_suggestions.map((suggestion) => (
-                        <li key={`${item.submission_id}-${suggestion}`}>{suggestion}</li>
-                      ))}
-                    </ul>
-                    {item.strengths ? <p className="mt-2 text-xs text-slate-700">优点：{item.strengths}</p> : null}
-                    {item.next_goal ? <p className="mt-1 text-xs text-slate-700">下一目标：{item.next_goal}</p> : null}
+                    <div className="mt-2 grid gap-3 lg:grid-cols-2">
+                      <div className="rounded-md border border-slate-200/70 bg-white/80 px-2 py-2">
+                        <p className="text-xs font-semibold text-slate-800">老师手工批改</p>
+                        <p className="mt-1 text-xs text-slate-800">总评：{item.summary_feedback}</p>
+                        <ul className="mt-2 list-disc pl-5 text-xs text-slate-700">
+                          {item.actionable_suggestions.map((suggestion) => (
+                            <li key={`${item.submission_id}-${suggestion}`}>{suggestion}</li>
+                          ))}
+                        </ul>
+                        {item.strengths ? <p className="mt-2 text-xs text-slate-700">优点：{item.strengths}</p> : null}
+                        {item.next_goal ? <p className="mt-1 text-xs text-slate-700">下一目标：{item.next_goal}</p> : null}
+                      </div>
+                      <div className="rounded-md border border-emerald-700/25 bg-emerald-50/70 px-2 py-2">
+                        <p className="text-xs font-semibold text-emerald-900">Agent 汇总</p>
+                        {item.agent_summary ? (
+                          <>
+                            <p className="mt-1 text-xs text-emerald-900">
+                              综合分：{item.agent_summary.total_score ?? "--"} · 结构 {item.agent_summary.radar.structure ?? "--"} ·
+                              语言 {item.agent_summary.radar.language ?? "--"} · 立意 {item.agent_summary.radar.value ?? "--"}
+                            </p>
+                            <ul className="mt-2 space-y-1 text-xs text-emerald-950">
+                              {item.agent_summary.items.map((agentItem) => (
+                                <li key={`${item.submission_id}-${agentItem.agent_name}`}>
+                                  {agentItem.agent_name}：{agentItem.score} · {agentItem.feedback}
+                                </li>
+                              ))}
+                            </ul>
+                          </>
+                        ) : (
+                          <p className="mt-1 text-xs text-emerald-900">当前暂无 Agent 批改记录。</p>
+                        )}
+                      </div>
+                    </div>
                     <p className="mt-1 text-xs text-slate-600">
                       发布时间：
                       {item.manual_published_at

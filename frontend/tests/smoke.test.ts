@@ -645,7 +645,31 @@ describe("frontend smoke", () => {
             actionable_suggestions: ["补充动作细节。", "结尾增加反思。"],
             strengths: "开头切题快。",
             next_goal: "练习过渡句。",
-            manual_published_at: "2026-02-19T02:10:00Z"
+            manual_published_at: "2026-02-19T02:10:00Z",
+            agent_summary: {
+              total_score: 86,
+              radar: { structure: 84, language: 87, value: 88 },
+              items: [
+                {
+                  agent_name: "structure",
+                  score: 84,
+                  feedback: "结构较清晰。",
+                  created_at: "2026-02-19T01:30:00Z"
+                },
+                {
+                  agent_name: "language",
+                  score: 87,
+                  feedback: "语言较准确。",
+                  created_at: "2026-02-19T01:31:00Z"
+                },
+                {
+                  agent_name: "value",
+                  score: 88,
+                  feedback: "立意较完整。",
+                  created_at: "2026-02-19T01:32:00Z"
+                }
+              ]
+            }
           }
         ]),
         { status: 200, headers: { "Content-Type": "application/json" } }
@@ -656,6 +680,8 @@ describe("frontend smoke", () => {
     const data = await listMyManualFeedback();
     expect(data).toHaveLength(1);
     expect(data[0].manual_total_score).toBe(88);
+    expect(data[0].agent_summary?.total_score).toBe(86);
+    expect(data[0].agent_summary?.items).toHaveLength(3);
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/backend/api/v1/submissions/me/manual-feedback",
       expect.objectContaining({ method: "GET" })
