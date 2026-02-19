@@ -26,6 +26,19 @@ docker compose up --build
 - Backend: http://localhost:8000
 - Health: http://localhost:8000/api/v1/health
 
+## 数据库迁移
+
+后端启动时会自动执行 Alembic 迁移（`upgrade head`）。不再使用 `create_all` 自动建表。
+
+常用命令：
+
+```bash
+make db-upgrade          # 执行迁移到最新
+make db-downgrade        # 回滚一个版本
+make db-stamp-head       # 仅标记当前版本为 head
+make db-verify-rollback  # 升级->回滚->再升级 的完整验证
+```
+
 ## 核心占位 API
 
 - `GET /api/v1/health`
