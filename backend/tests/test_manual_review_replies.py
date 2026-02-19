@@ -61,7 +61,7 @@ def _login(
     return payload["access_token"], payload["user"]
 
 
-def _seed_manual_review(client: TestClient, *, published: bool) -> tuple[str, str, str]:
+def _seed_manual_review(client: TestClient, *, published: bool) -> tuple[str, str, str, str]:
     teacher_token, _ = _login(
         client,
         phone=_phone(f"teacher-reply-{time.time_ns()}"),
@@ -137,12 +137,12 @@ def _seed_manual_review(client: TestClient, *, published: bool) -> tuple[str, st
         )
         assert publish_response.status_code == 200
 
-    return teacher_token, student_token, submission_id
+    return teacher_token, student_token, assignment_payload["assignment_id"], submission_id
 
 
 def test_student_and_teacher_can_exchange_manual_review_replies() -> None:
     with TestClient(app) as client:
-        teacher_token, student_token, submission_id = _seed_manual_review(client, published=True)
+        teacher_token, student_token, assignment_id, submission_id = _seed_manual_review(client, published=True)
 
         student_reply_response = client.post(
             "/api/v1/submissions/me/manual-feedback/replies",
@@ -159,7 +159,6 @@ def test_student_and_teacher_can_exchange_manual_review_replies() -> None:
         assert teacher_list_response.status_code == 200
         assert len(teacher_list_response.json()) == 1
 
-        assignment_id = teacher_list_response.json()[0]["assignment_id"]
         queue_after_student_reply = client.get(
             f"/api/v1/assignments/{assignment_id}/grading-queue",
             headers={"Authorization": f"Bearer {teacher_token}"},
@@ -187,6 +186,10 @@ def test_student_and_teacher_can_exchange_manual_review_replies() -> None:
             f"/api/v1/assignments/{assignment_id}/grading-queue",
             headers={"Authorization": f"Bearer {teacher_token}"},
         )
+        communication_response = client.get(
+            f"/api/v1/assignments/{assignment_id}/communication-threads",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+        )
 
     assert student_list_response.status_code == 200
     payload = student_list_response.json()
@@ -200,11 +203,19 @@ def test_student_and_teacher_can_exchange_manual_review_replies() -> None:
     assert second_queue_item["teacher_reply_count"] == 1
     assert second_queue_item["pending_teacher_reply"] is False
     assert second_queue_item["last_reply_role"] == "teacher"
+    assert communication_response.status_code == 200
+    communication_payload = communication_response.json()
+    assert communication_payload["assignment_id"] == assignment_id
+    assert communication_payload["total_students"] == 1
+    assert communication_payload["items"][0]["pending_teacher_reply_count"] == 0
+    assert communication_payload["items"][0]["student_reply_count"] == 1
+    assert communication_payload["items"][0]["teacher_reply_count"] == 1
+    assert communication_payload["items"][0]["latest_reply_role"] == "teacher"
 
 
 def test_student_cannot_reply_before_manual_review_is_published() -> None:
     with TestClient(app) as client:
-        _, student_token, submission_id = _seed_manual_review(client, published=False)
+        _, student_token, _, submission_id = _seed_manual_review(client, published=False)
 
         student_reply_response = client.post(
             "/api/v1/submissions/me/manual-feedback/replies",
@@ -214,3 +225,41 @@ def test_student_cannot_reply_before_manual_review_is_published() -> None:
 
     assert student_reply_response.status_code == 409
     assert student_reply_response.json()["detail"] == "Manual review is not published yet"
+
+
+def test_student_manual_feedback_contains_unread_teacher_reply_badge() -> None:
+    with TestClient(app) as client:
+        teacher_token, student_token, _, submission_id = _seed_manual_review(client, published=True)
+
+        teacher_reply_response = client.post(
+            f"/api/v1/manual-reviews/submission/{submission_id}/replies",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={"content": "你先把第二段动作细节补完整。"},
+        )
+        assert teacher_reply_response.status_code == 201
+
+        unread_feedback_response = client.get(
+            "/api/v1/submissions/me/manual-feedback",
+            headers={"Authorization": f"Bearer {student_token}"},
+        )
+        assert unread_feedback_response.status_code == 200
+        unread_item = unread_feedback_response.json()[0]
+        assert unread_item["has_unread_teacher_reply"] is True
+        assert unread_item["unread_teacher_reply_count"] == 1
+
+        mark_read_response = client.post(
+            "/api/v1/submissions/me/manual-feedback/mark-read",
+            headers={"Authorization": f"Bearer {student_token}"},
+            json={"submission_ids": [submission_id]},
+        )
+        assert mark_read_response.status_code == 200
+
+        read_feedback_response = client.get(
+            "/api/v1/submissions/me/manual-feedback",
+            headers={"Authorization": f"Bearer {student_token}"},
+        )
+
+    assert read_feedback_response.status_code == 200
+    read_item = read_feedback_response.json()[0]
+    assert read_item["has_unread_teacher_reply"] is False
+    assert read_item["unread_teacher_reply_count"] == 0

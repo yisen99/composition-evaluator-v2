@@ -225,31 +225,59 @@ def list_my_manual_feedback(
         .order_by(ManualReview.published_at.desc(), Submission.created_at.desc())
     ).all()
 
-    return [
-        StudentManualFeedbackItem(
-            submission_id=submission.id,
-            assignment_id=submission.assignment_id,
-            assignment_title=assignment_title,
-            class_id=submission.class_id,
-            class_name=class_name,
-            content_type=submission.content_type,
-            created_at=submission.created_at,
-            manual_total_score=manual_review.total_score,
-            structure_score=manual_review.structure_score,
-            language_score=manual_review.language_score,
-            value_score=manual_review.value_score,
-            summary_feedback=manual_review.summary_feedback,
-            actionable_suggestions=manual_review.actionable_suggestions,
-            strengths=manual_review.strengths,
-            next_goal=manual_review.next_goal,
-            manual_published_at=manual_review.published_at,
-            manual_view_count=receipt.view_count if receipt else 0,
-            manual_first_viewed_at=receipt.first_viewed_at if receipt else None,
-            manual_last_viewed_at=receipt.last_viewed_at if receipt else None,
-            agent_summary=_load_latest_agent_summary(db, submission_id=submission.id),
+    if not rows:
+        return []
+
+    submission_ids = [submission.id for submission, _, _, _, _ in rows]
+    teacher_replies = db.scalars(
+        select(ManualReviewReply)
+        .where(
+            ManualReviewReply.submission_id.in_(submission_ids),
+            ManualReviewReply.author_role == "teacher",
         )
-        for submission, assignment_title, class_name, manual_review, receipt in rows
-    ]
+        .order_by(ManualReviewReply.created_at.desc())
+    ).all()
+    teacher_replies_by_submission: dict[str, list[ManualReviewReply]] = {}
+    for reply in teacher_replies:
+        teacher_replies_by_submission.setdefault(reply.submission_id, []).append(reply)
+
+    items: list[StudentManualFeedbackItem] = []
+    for submission, assignment_title, class_name, manual_review, receipt in rows:
+        teacher_reply_list = teacher_replies_by_submission.get(submission.id, [])
+        latest_teacher_reply_at = teacher_reply_list[0].created_at if teacher_reply_list else None
+        if receipt and receipt.last_viewed_at:
+            unread_teacher_reply_count = sum(1 for item in teacher_reply_list if item.created_at > receipt.last_viewed_at)
+        else:
+            unread_teacher_reply_count = len(teacher_reply_list)
+
+        items.append(
+            StudentManualFeedbackItem(
+                submission_id=submission.id,
+                assignment_id=submission.assignment_id,
+                assignment_title=assignment_title,
+                class_id=submission.class_id,
+                class_name=class_name,
+                content_type=submission.content_type,
+                created_at=submission.created_at,
+                manual_total_score=manual_review.total_score,
+                structure_score=manual_review.structure_score,
+                language_score=manual_review.language_score,
+                value_score=manual_review.value_score,
+                summary_feedback=manual_review.summary_feedback,
+                actionable_suggestions=manual_review.actionable_suggestions,
+                strengths=manual_review.strengths,
+                next_goal=manual_review.next_goal,
+                manual_published_at=manual_review.published_at,
+                manual_view_count=receipt.view_count if receipt else 0,
+                manual_first_viewed_at=receipt.first_viewed_at if receipt else None,
+                manual_last_viewed_at=receipt.last_viewed_at if receipt else None,
+                has_unread_teacher_reply=unread_teacher_reply_count > 0,
+                unread_teacher_reply_count=unread_teacher_reply_count,
+                latest_teacher_reply_at=latest_teacher_reply_at,
+                agent_summary=_load_latest_agent_summary(db, submission_id=submission.id),
+            )
+        )
+    return items
 
 
 @router.post("/me/manual-feedback/mark-read", response_model=MarkManualFeedbackReadResponse)

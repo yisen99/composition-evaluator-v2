@@ -72,6 +72,9 @@ class StudentManualFeedbackItem(BaseModel):
     manual_view_count: int = 0
     manual_first_viewed_at: datetime | None = None
     manual_last_viewed_at: datetime | None = None
+    has_unread_teacher_reply: bool = False
+    unread_teacher_reply_count: int = 0
+    latest_teacher_reply_at: datetime | None = None
     agent_summary: StudentAgentSummary | None = None
 
 

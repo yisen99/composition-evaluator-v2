@@ -1,6 +1,7 @@
 import type {
   AccountRegisterRequest,
   AccountRegisterResponse,
+  AssignmentCommunicationThreadsResponse,
   AssignmentGradingQueueResponse,
   AssignmentDetailResponse,
   AssignmentListItem,
@@ -275,6 +276,12 @@ export function getAssignmentDetail(assignmentId: string): Promise<AssignmentDet
 
 export function getAssignmentGradingQueue(assignmentId: string): Promise<AssignmentGradingQueueResponse> {
   return apiRequest<AssignmentGradingQueueResponse>(`/api/v1/assignments/${assignmentId}/grading-queue`, {
+    method: "GET"
+  });
+}
+
+export function getAssignmentCommunicationThreads(assignmentId: string): Promise<AssignmentCommunicationThreadsResponse> {
+  return apiRequest<AssignmentCommunicationThreadsResponse>(`/api/v1/assignments/${assignmentId}/communication-threads`, {
     method: "GET"
   });
 }

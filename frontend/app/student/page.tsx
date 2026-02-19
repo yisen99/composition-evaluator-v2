@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { createCompositionSubmission, joinClass, listAssignments, listClasses, listMySubmissions } from "@/lib/api/client";
+import {
+  createCompositionSubmission,
+  joinClass,
+  listAssignments,
+  listClasses,
+  listMyManualFeedback,
+  listMySubmissions
+} from "@/lib/api/client";
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
 import { buildAssignmentSubmissionGuard } from "@/lib/submission/assignment-guard";
 import { validateSubmissionDraft } from "@/lib/submission/validation";
@@ -21,6 +28,7 @@ export default function StudentPage() {
   const [classroomList, setClassroomList] = useState<ClassListItem[]>([]);
   const [assignmentList, setAssignmentList] = useState<AssignmentListItem[]>([]);
   const [submissionList, setSubmissionList] = useState<StudentSubmissionListItem[]>([]);
+  const [unreadTeacherReplyCount, setUnreadTeacherReplyCount] = useState(0);
   const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
   const [submissionType, setSubmissionType] = useState<SubmissionContentType>("text");
@@ -38,14 +46,18 @@ export default function StudentPage() {
   const hydrateWorkspace = async () => {
     setBusy("loading");
     try {
-      const [loadedClasses, loadedAssignments, loadedSubmissions] = await Promise.all([
+      const [loadedClasses, loadedAssignments, loadedSubmissions, loadedManualFeedback] = await Promise.all([
         listClasses(),
         listAssignments(),
-        listMySubmissions()
+        listMySubmissions(),
+        listMyManualFeedback()
       ]);
       setClassroomList(loadedClasses);
       setAssignmentList(loadedAssignments);
       setSubmissionList(loadedSubmissions);
+      setUnreadTeacherReplyCount(
+        loadedManualFeedback.reduce((sum, item) => sum + (item.unread_teacher_reply_count || 0), 0)
+      );
       setSelectedClassId((prev) => prev || loadedClasses[0]?.class_id || "");
     } catch (error) {
       setToast({ type: "error", message: `数据加载失败：${(error as Error).message}` });
@@ -186,7 +198,7 @@ export default function StudentPage() {
                 成长轨迹
               </Link>
               <Link className="underline" href="/student/feedback">
-                手工批改结果
+                手工批改结果{unreadTeacherReplyCount > 0 ? `（${unreadTeacherReplyCount} 条新回复）` : ""}
               </Link>
               <span>
                 {currentUser.display_name} · {currentUser.phone}

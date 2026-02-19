@@ -37,13 +37,8 @@ export default function StudentFeedbackPage() {
       setError("");
       setToast(null);
       try {
-        const payload = await listMyManualFeedback();
-        if (payload.length > 0) {
-          await markMyManualFeedbackRead(payload.map((item) => item.submission_id));
-        }
-        const refreshed = await listMyManualFeedback();
         if (!cancelled) {
-          setItems(refreshed);
+          setItems(await listMyManualFeedback());
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -68,6 +63,8 @@ export default function StudentFeedbackPage() {
     try {
       const payload = await listMyManualFeedbackReplies(submissionId);
       setRepliesBySubmissionId((prev) => ({ ...prev, [submissionId]: payload }));
+      await markMyManualFeedbackRead([submissionId]);
+      setItems(await listMyManualFeedback());
     } catch (loadError) {
       setToast({ type: "error", message: `加载回复失败：${(loadError as Error).message}` });
     } finally {
@@ -169,11 +166,9 @@ export default function StudentFeedbackPage() {
               <p className="mt-2 text-2xl font-semibold">{items[0]?.manual_total_score ?? "--"}</p>
             </div>
             <div className="paper-card p-4">
-              <p className="label">最近发布时间</p>
-              <p className="mt-2 text-sm font-semibold">
-                {items[0]?.manual_published_at
-                  ? new Date(items[0].manual_published_at).toLocaleString("zh-CN", { hour12: false })
-                  : "--"}
+              <p className="label">老师新回复</p>
+              <p className="mt-2 text-2xl font-semibold">
+                {items.reduce((sum, item) => sum + (item.unread_teacher_reply_count || 0), 0)}
               </p>
             </div>
           </div>
@@ -201,6 +196,11 @@ export default function StudentFeedbackPage() {
                         ? ` · 最近查看 ${new Date(item.manual_last_viewed_at).toLocaleString("zh-CN", { hour12: false })}`
                         : ""}
                     </p>
+                    {(item.unread_teacher_reply_count || 0) > 0 ? (
+                      <p className="mt-1 text-xs font-semibold text-rose-700">
+                        有 {item.unread_teacher_reply_count} 条老师新回复未读
+                      </p>
+                    ) : null}
                     <div className="mt-2 grid gap-3 lg:grid-cols-2">
                       <div className="rounded-md border border-slate-200/70 bg-white/80 px-2 py-2">
                         <p className="text-xs font-semibold text-slate-800">老师手工批改</p>

@@ -135,3 +135,28 @@ class AssignmentGradingQueueResponse(BaseModel):
     manual_draft_count: int
     manual_published_count: int
     items: list[AssignmentGradingQueueItem]
+
+
+class AssignmentCommunicationStudentItem(BaseModel):
+    student_id: str
+    student_name: str
+    submission_ids: list[str]
+    reply_total_count: int
+    student_reply_count: int
+    teacher_reply_count: int
+    pending_teacher_reply_count: int
+    pending_student_reply_count: int
+    unread_by_student_reply_count: int
+    latest_reply_role: ManualReviewReplyAuthorRole | None = None
+    latest_reply_content: str | None = None
+    latest_reply_at: datetime | None = None
+
+
+class AssignmentCommunicationThreadsResponse(BaseModel):
+    assignment_id: str
+    class_id: str
+    total_students: int
+    total_replies: int
+    total_pending_teacher_replies: int
+    total_unread_by_students: int
+    items: list[AssignmentCommunicationStudentItem]

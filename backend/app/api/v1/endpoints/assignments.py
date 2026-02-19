@@ -25,7 +25,12 @@ from app.schemas.assignment import (
     CreateAssignmentRequest,
     CreateAssignmentResponse,
 )
-from app.schemas.manual_review import AssignmentGradingQueueItem, AssignmentGradingQueueResponse
+from app.schemas.manual_review import (
+    AssignmentCommunicationStudentItem,
+    AssignmentCommunicationThreadsResponse,
+    AssignmentGradingQueueItem,
+    AssignmentGradingQueueResponse,
+)
 
 router = APIRouter()
 
@@ -271,6 +276,138 @@ def get_assignment_grading_queue(
         total_submissions=len(items),
         manual_draft_count=manual_draft_count,
         manual_published_count=manual_published_count,
+        items=items,
+    )
+
+
+@router.get("/{assignment_id}/communication-threads", response_model=AssignmentCommunicationThreadsResponse)
+def get_assignment_communication_threads(
+    assignment_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(require_teacher),
+) -> AssignmentCommunicationThreadsResponse:
+    assignment = db.get(Assignment, assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    if assignment.teacher_id != current_teacher.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teacher does not own this assignment")
+
+    submission_rows = db.execute(
+        select(Submission, User.display_name)
+        .join(User, User.id == Submission.student_id)
+        .where(Submission.assignment_id == assignment.id)
+        .order_by(Submission.created_at.desc())
+    ).all()
+    if not submission_rows:
+        return AssignmentCommunicationThreadsResponse(
+            assignment_id=assignment.id,
+            class_id=assignment.class_id,
+            total_students=0,
+            total_replies=0,
+            total_pending_teacher_replies=0,
+            total_unread_by_students=0,
+            items=[],
+        )
+
+    submission_ids = [submission.id for submission, _ in submission_rows]
+    replies = db.scalars(
+        select(ManualReviewReply)
+        .where(ManualReviewReply.submission_id.in_(submission_ids))
+        .order_by(ManualReviewReply.created_at.asc())
+    ).all()
+    receipts = db.scalars(
+        select(ManualFeedbackReceipt)
+        .where(ManualFeedbackReceipt.submission_id.in_(submission_ids))
+    ).all()
+    receipt_by_submission = {item.submission_id: item for item in receipts}
+    replies_by_submission: dict[str, list[ManualReviewReply]] = {}
+    for reply in replies:
+        replies_by_submission.setdefault(reply.submission_id, []).append(reply)
+
+    submission_meta = {
+        submission.id: (submission.student_id, student_name)
+        for submission, student_name in submission_rows
+    }
+    student_summary: dict[str, AssignmentCommunicationStudentItem] = {}
+    total_replies = 0
+    total_pending_teacher_replies = 0
+    total_unread_by_students = 0
+
+    for submission_id in submission_ids:
+        student_id, student_name = submission_meta[submission_id]
+        thread_replies = replies_by_submission.get(submission_id, [])
+        thread_total = len(thread_replies)
+        total_replies += thread_total
+
+        student_reply_count = sum(1 for item in thread_replies if item.author_role == "student")
+        teacher_reply_count = sum(1 for item in thread_replies if item.author_role == "teacher")
+        pending_teacher_reply = bool(thread_replies) and thread_replies[-1].author_role == "student"
+        pending_student_reply = bool(thread_replies) and thread_replies[-1].author_role == "teacher"
+
+        receipt = receipt_by_submission.get(submission_id)
+        if receipt and receipt.last_viewed_at:
+            unread_by_student_reply_count = sum(
+                1
+                for item in thread_replies
+                if item.author_role == "teacher" and item.created_at > receipt.last_viewed_at
+            )
+        else:
+            unread_by_student_reply_count = sum(1 for item in thread_replies if item.author_role == "teacher")
+
+        summary = student_summary.get(student_id)
+        if not summary:
+            summary = AssignmentCommunicationStudentItem(
+                student_id=student_id,
+                student_name=student_name,
+                submission_ids=[],
+                reply_total_count=0,
+                student_reply_count=0,
+                teacher_reply_count=0,
+                pending_teacher_reply_count=0,
+                pending_student_reply_count=0,
+                unread_by_student_reply_count=0,
+                latest_reply_role=None,
+                latest_reply_content=None,
+                latest_reply_at=None,
+            )
+            student_summary[student_id] = summary
+
+        summary.submission_ids.append(submission_id)
+        summary.reply_total_count += thread_total
+        summary.student_reply_count += student_reply_count
+        summary.teacher_reply_count += teacher_reply_count
+        summary.unread_by_student_reply_count += unread_by_student_reply_count
+        if pending_teacher_reply:
+            summary.pending_teacher_reply_count += 1
+            total_pending_teacher_replies += 1
+        if pending_student_reply:
+            summary.pending_student_reply_count += 1
+        total_unread_by_students += unread_by_student_reply_count
+
+        if thread_replies:
+            latest = thread_replies[-1]
+            if not summary.latest_reply_at or latest.created_at > summary.latest_reply_at:
+                summary.latest_reply_at = latest.created_at
+                summary.latest_reply_role = latest.author_role  # type: ignore[assignment]
+                summary.latest_reply_content = latest.content
+
+    items = sorted(
+        student_summary.values(),
+        key=lambda item: (
+            item.pending_teacher_reply_count,
+            item.unread_by_student_reply_count,
+            item.latest_reply_at.timestamp() if item.latest_reply_at else 0,
+        ),
+        reverse=True,
+    )
+
+    return AssignmentCommunicationThreadsResponse(
+        assignment_id=assignment.id,
+        class_id=assignment.class_id,
+        total_students=len(items),
+        total_replies=total_replies,
+        total_pending_teacher_replies=total_pending_teacher_replies,
+        total_unread_by_students=total_unread_by_students,
         items=items,
     )
 

@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   createManualReviewReplyForTeacher,
+  getAssignmentCommunicationThreads,
   createReviewSummary,
   getAssignmentGradingQueue,
   getAssignmentDetail,
@@ -18,6 +19,7 @@ import {
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
 import type {
   AssignmentGradingQueueItem,
+  AssignmentCommunicationStudentItem,
   AssignmentDetailResponse,
   ManualReviewDraftRequest,
   ManualReviewItem,
@@ -96,6 +98,7 @@ export default function TeacherAssignmentDetailPage() {
   const [replyLoadingSubmissionId, setReplyLoadingSubmissionId] = useState("");
   const [replySubmittingSubmissionId, setReplySubmittingSubmissionId] = useState("");
   const [showOnlyPendingReplies, setShowOnlyPendingReplies] = useState(false);
+  const [communicationItems, setCommunicationItems] = useState<AssignmentCommunicationStudentItem[]>([]);
 
   useEffect(() => {
     const session = getAuthSession();
@@ -111,12 +114,14 @@ export default function TeacherAssignmentDetailPage() {
       setLoading(true);
       setError("");
       try {
-        const [payload, queuePayload] = await Promise.all([
+        const [payload, queuePayload, communicationPayload] = await Promise.all([
           getAssignmentDetail(assignmentId),
-          getAssignmentGradingQueue(assignmentId)
+          getAssignmentGradingQueue(assignmentId),
+          getAssignmentCommunicationThreads(assignmentId)
         ]);
         if (!cancelled) {
           setDetail(payload);
+          setCommunicationItems(communicationPayload.items);
           setQueueStats({
             total: queuePayload.total_submissions,
             draft: queuePayload.manual_draft_count,
@@ -146,11 +151,13 @@ export default function TeacherAssignmentDetailPage() {
     if (!assignmentId) {
       return;
     }
-    const [payload, queuePayload] = await Promise.all([
+    const [payload, queuePayload, communicationPayload] = await Promise.all([
       getAssignmentDetail(assignmentId),
-      getAssignmentGradingQueue(assignmentId)
+      getAssignmentGradingQueue(assignmentId),
+      getAssignmentCommunicationThreads(assignmentId)
     ]);
     setDetail(payload);
+    setCommunicationItems(communicationPayload.items);
     setQueueStats({
       total: queuePayload.total_submissions,
       draft: queuePayload.manual_draft_count,
@@ -800,6 +807,53 @@ export default function TeacherAssignmentDetailPage() {
                         </li>
                       );
                     })
+                  )}
+                </ul>
+              </div>
+
+              <div className="paper-card p-5">
+                <p className="label">任务沟通面板（按学生）</p>
+                <p className="mt-2 text-sm text-slate-700">
+                  共 {communicationItems.length} 位学生有沟通线程，优先处理“待老师回复”项。
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {communicationItems.length === 0 ? (
+                    <li className="text-sm text-slate-600">当前任务还没有沟通记录。</li>
+                  ) : (
+                    communicationItems.map((item) => (
+                      <li
+                        key={item.student_id}
+                        className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-3 text-sm text-slate-800"
+                      >
+                        <p className="font-semibold">{item.student_name}</p>
+                        <p className="mt-1 text-xs text-slate-700">
+                          学生回复 {item.student_reply_count} · 老师回复 {item.teacher_reply_count} · 总消息 {item.reply_total_count}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-700">
+                          待老师回复 {item.pending_teacher_reply_count} · 学生未读老师回复 {item.unread_by_student_reply_count}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-700">
+                          最近发言：{item.latest_reply_role || "--"} · {item.latest_reply_at || "--"}
+                        </p>
+                        {item.latest_reply_content ? (
+                          <p className="mt-1 rounded bg-white/80 px-2 py-1 text-xs text-slate-700">{item.latest_reply_content}</p>
+                        ) : null}
+                        {item.submission_ids.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <button
+                              className="btn-seal px-3 py-1 text-xs"
+                              onClick={() => {
+                                void loadReplyThread(item.submission_ids[0]);
+                              }}
+                              type="button"
+                            >
+                              查看该生最近线程
+                            </button>
+                            <span className="text-xs text-slate-600">Submission: {item.submission_ids[0]}</span>
+                          </div>
+                        ) : null}
+                      </li>
+                    ))
                   )}
                 </ul>
               </div>

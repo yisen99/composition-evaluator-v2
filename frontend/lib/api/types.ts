@@ -185,6 +185,9 @@ export type StudentManualFeedbackItem = {
   manual_view_count?: number;
   manual_first_viewed_at?: string | null;
   manual_last_viewed_at?: string | null;
+  has_unread_teacher_reply?: boolean;
+  unread_teacher_reply_count?: number;
+  latest_teacher_reply_at?: string | null;
   agent_summary?: {
     total_score?: number | null;
     radar: {
@@ -304,6 +307,31 @@ export type AssignmentGradingQueueResponse = {
   manual_draft_count: number;
   manual_published_count: number;
   items: AssignmentGradingQueueItem[];
+};
+
+export type AssignmentCommunicationStudentItem = {
+  student_id: string;
+  student_name: string;
+  submission_ids: string[];
+  reply_total_count: number;
+  student_reply_count: number;
+  teacher_reply_count: number;
+  pending_teacher_reply_count: number;
+  pending_student_reply_count: number;
+  unread_by_student_reply_count: number;
+  latest_reply_role?: "teacher" | "student" | null;
+  latest_reply_content?: string | null;
+  latest_reply_at?: string | null;
+};
+
+export type AssignmentCommunicationThreadsResponse = {
+  assignment_id: string;
+  class_id: string;
+  total_students: number;
+  total_replies: number;
+  total_pending_teacher_replies: number;
+  total_unread_by_students: number;
+  items: AssignmentCommunicationStudentItem[];
 };
 
 export type ReviewAgentName = "structure" | "language" | "value";

@@ -10,6 +10,7 @@ import {
   createAssignment,
   createClass,
   createManualReviewReplyForTeacher,
+  getAssignmentCommunicationThreads,
   getAssignmentGradingQueue,
   getManualReviewForSubmission,
   getMyProgress,
@@ -645,6 +646,49 @@ describe("frontend smoke", () => {
     vi.unstubAllGlobals();
   });
 
+  it("gets assignment communication threads via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          assignment_id: "asg-1",
+          class_id: "class-1",
+          total_students: 1,
+          total_replies: 3,
+          total_pending_teacher_replies: 1,
+          total_unread_by_students: 2,
+          items: [
+            {
+              student_id: "student-1",
+              student_name: "小明",
+              submission_ids: ["sub-1"],
+              reply_total_count: 3,
+              student_reply_count: 2,
+              teacher_reply_count: 1,
+              pending_teacher_reply_count: 1,
+              pending_student_reply_count: 0,
+              unread_by_student_reply_count: 2,
+              latest_reply_role: "student",
+              latest_reply_content: "我已按建议修改。",
+              latest_reply_at: "2026-02-19T03:06:00Z"
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await getAssignmentCommunicationThreads("asg-1");
+    expect(data.total_students).toBe(1);
+    expect(data.items[0].pending_teacher_reply_count).toBe(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/assignments/asg-1/communication-threads",
+      expect.objectContaining({ method: "GET" })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it("gets student progress via proxy api", async () => {
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(
@@ -732,6 +776,9 @@ describe("frontend smoke", () => {
             manual_view_count: 1,
             manual_first_viewed_at: "2026-02-19T03:10:00Z",
             manual_last_viewed_at: "2026-02-19T03:10:00Z",
+            has_unread_teacher_reply: true,
+            unread_teacher_reply_count: 2,
+            latest_teacher_reply_at: "2026-02-19T03:06:00Z",
             manual_published_at: "2026-02-19T02:10:00Z",
             agent_summary: {
               total_score: 86,
@@ -768,6 +815,8 @@ describe("frontend smoke", () => {
     expect(data).toHaveLength(1);
     expect(data[0].manual_total_score).toBe(88);
     expect(data[0].manual_view_count).toBe(1);
+    expect(data[0].has_unread_teacher_reply).toBe(true);
+    expect(data[0].unread_teacher_reply_count).toBe(2);
     expect(data[0].agent_summary?.total_score).toBe(86);
     expect(data[0].agent_summary?.items).toHaveLength(3);
     expect(mockFetch).toHaveBeenCalledWith(
