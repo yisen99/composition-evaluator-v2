@@ -455,6 +455,28 @@ describe("frontend smoke", () => {
     vi.unstubAllGlobals();
   });
 
+  it("maps register duplicate error to friendly chinese message", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "REGISTER_USER_ALREADY_EXISTS" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(
+      registerAccount({
+        email: "teacher@example.com",
+        password: "SecurePass123!",
+        role: "teacher",
+        display_name: "账号老师",
+        phone: "13800138000"
+      })
+    ).rejects.toThrow("该邮箱或手机号已被注册，请更换后重试。");
+
+    vi.unstubAllGlobals();
+  });
+
   it("logs in with password via mature auth backend", async () => {
     const mockFetch = vi
       .fn()

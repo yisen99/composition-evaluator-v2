@@ -27,9 +27,73 @@ import type {
 import { getAccessToken } from "@/lib/auth/session";
 
 export const API_PROXY_PREFIX = "/api/backend";
+const API_ERROR_MESSAGES: Record<string, string> = {
+  REGISTER_USER_ALREADY_EXISTS: "该邮箱或手机号已被注册，请更换后重试。",
+  LOGIN_BAD_CREDENTIALS: "账号或密码错误，请检查后重试。"
+};
+
+type ErrorDetailItem = {
+  msg?: string;
+};
 
 export function buildApiPath(path: string): string {
   return `${API_PROXY_PREFIX}${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function extractErrorDetail(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+
+  const detail = (payload as { detail?: unknown }).detail;
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => (typeof item === "object" && item ? (item as ErrorDetailItem).msg : undefined))
+      .filter((item): item is string => Boolean(item));
+    if (messages.length > 0) {
+      return messages.join("; ");
+    }
+  }
+
+  const message = (payload as { message?: unknown }).message;
+  return typeof message === "string" ? message : undefined;
+}
+
+function toDisplayErrorMessage(status: number, detail?: string): string {
+  if (detail && API_ERROR_MESSAGES[detail]) {
+    return API_ERROR_MESSAGES[detail];
+  }
+  if (detail) {
+    return detail;
+  }
+  return `API request failed: ${status}`;
+}
+
+async function createApiError(response: Response): Promise<Error> {
+  let detail: string | undefined;
+  const contentType = response.headers.get("Content-Type") || "";
+
+  if (contentType.includes("application/json")) {
+    try {
+      const payload = (await response.json()) as unknown;
+      detail = extractErrorDetail(payload);
+    } catch {
+      detail = undefined;
+    }
+  } else {
+    try {
+      const text = await response.text();
+      detail = text || undefined;
+    } catch {
+      detail = undefined;
+    }
+  }
+
+  return new Error(toDisplayErrorMessage(response.status, detail));
 }
 
 async function apiRequest<T>(path: string, init?: RequestInit, withAuth = true): Promise<T> {
@@ -50,7 +114,7 @@ async function apiRequest<T>(path: string, init?: RequestInit, withAuth = true):
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    throw await createApiError(response);
   }
 
   return (await response.json()) as T;
@@ -70,7 +134,7 @@ async function apiFormRequest<T>(path: string, formData: FormData): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    throw await createApiError(response);
   }
 
   return (await response.json()) as T;
@@ -90,7 +154,7 @@ async function apiRequestWithToken<T>(path: string, token: string, init?: Reques
     headers
   });
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    throw await createApiError(response);
   }
   return (await response.json()) as T;
 }
