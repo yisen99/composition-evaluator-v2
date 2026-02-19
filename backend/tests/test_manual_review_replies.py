@@ -159,6 +159,18 @@ def test_student_and_teacher_can_exchange_manual_review_replies() -> None:
         assert teacher_list_response.status_code == 200
         assert len(teacher_list_response.json()) == 1
 
+        assignment_id = teacher_list_response.json()[0]["assignment_id"]
+        queue_after_student_reply = client.get(
+            f"/api/v1/assignments/{assignment_id}/grading-queue",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+        )
+        assert queue_after_student_reply.status_code == 200
+        first_queue_item = queue_after_student_reply.json()["items"][0]
+        assert first_queue_item["student_reply_count"] == 1
+        assert first_queue_item["teacher_reply_count"] == 0
+        assert first_queue_item["pending_teacher_reply"] is True
+        assert first_queue_item["last_reply_role"] == "student"
+
         teacher_reply_response = client.post(
             f"/api/v1/manual-reviews/submission/{submission_id}/replies",
             headers={"Authorization": f"Bearer {teacher_token}"},
@@ -171,6 +183,10 @@ def test_student_and_teacher_can_exchange_manual_review_replies() -> None:
             f"/api/v1/submissions/me/manual-feedback/replies?submission_id={submission_id}",
             headers={"Authorization": f"Bearer {student_token}"},
         )
+        queue_after_teacher_reply = client.get(
+            f"/api/v1/assignments/{assignment_id}/grading-queue",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+        )
 
     assert student_list_response.status_code == 200
     payload = student_list_response.json()
@@ -178,6 +194,12 @@ def test_student_and_teacher_can_exchange_manual_review_replies() -> None:
     roles = [item["author_role"] for item in payload]
     assert "student" in roles
     assert "teacher" in roles
+    assert queue_after_teacher_reply.status_code == 200
+    second_queue_item = queue_after_teacher_reply.json()["items"][0]
+    assert second_queue_item["student_reply_count"] == 1
+    assert second_queue_item["teacher_reply_count"] == 1
+    assert second_queue_item["pending_teacher_reply"] is False
+    assert second_queue_item["last_reply_role"] == "teacher"
 
 
 def test_student_cannot_reply_before_manual_review_is_published() -> None:

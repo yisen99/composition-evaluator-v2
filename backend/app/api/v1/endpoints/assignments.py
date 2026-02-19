@@ -12,6 +12,7 @@ from app.models import (
     ClassRoom,
     ManualFeedbackReceipt,
     ManualReview,
+    ManualReviewReply,
     StudentMemoryNote,
     Submission,
     SubmissionReview,
@@ -182,6 +183,18 @@ def get_assignment_grading_queue(
         else []
     )
     receipt_by_submission = {item.submission_id: item for item in manual_receipts}
+    manual_replies = (
+        db.scalars(
+            select(ManualReviewReply)
+            .where(ManualReviewReply.submission_id.in_(submission_ids))
+            .order_by(ManualReviewReply.created_at.asc())
+        ).all()
+        if submission_ids
+        else []
+    )
+    replies_by_submission: dict[str, list[ManualReviewReply]] = {}
+    for reply in manual_replies:
+        replies_by_submission.setdefault(reply.submission_id, []).append(reply)
 
     items: list[AssignmentGradingQueueItem] = []
     manual_draft_count = 0
@@ -196,6 +209,12 @@ def get_assignment_grading_queue(
         manual_view_count = 0
         manual_first_viewed_at = None
         manual_last_viewed_at = None
+        reply_total_count = 0
+        student_reply_count = 0
+        teacher_reply_count = 0
+        pending_teacher_reply = False
+        last_reply_role = None
+        last_reply_at = None
         if manual:
             manual_status = manual.status
             manual_total_score = manual.total_score
@@ -212,6 +231,15 @@ def get_assignment_grading_queue(
                     manual_view_count = receipt.view_count
                     manual_first_viewed_at = receipt.first_viewed_at
                     manual_last_viewed_at = receipt.last_viewed_at
+                replies = replies_by_submission.get(submission.id, [])
+                reply_total_count = len(replies)
+                student_reply_count = sum(1 for item in replies if item.author_role == "student")
+                teacher_reply_count = sum(1 for item in replies if item.author_role == "teacher")
+                if replies:
+                    last_reply = replies[-1]
+                    last_reply_role = last_reply.author_role
+                    last_reply_at = last_reply.created_at
+                    pending_teacher_reply = last_reply.author_role == "student"
 
         items.append(
             AssignmentGradingQueueItem(
@@ -228,6 +256,12 @@ def get_assignment_grading_queue(
                 manual_view_count=manual_view_count,
                 manual_first_viewed_at=manual_first_viewed_at,
                 manual_last_viewed_at=manual_last_viewed_at,
+                reply_total_count=reply_total_count,
+                student_reply_count=student_reply_count,
+                teacher_reply_count=teacher_reply_count,
+                pending_teacher_reply=pending_teacher_reply,
+                last_reply_role=last_reply_role,  # type: ignore[arg-type]
+                last_reply_at=last_reply_at,
             )
         )
 

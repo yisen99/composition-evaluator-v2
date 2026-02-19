@@ -614,7 +614,17 @@ describe("frontend smoke", () => {
               manual_status: "published",
               manual_total_score: 88,
               manual_updated_at: "2026-02-19T02:10:00Z",
-              manual_published_at: "2026-02-19T02:10:00Z"
+              manual_published_at: "2026-02-19T02:10:00Z",
+              manual_viewed: true,
+              manual_view_count: 2,
+              manual_first_viewed_at: "2026-02-19T03:00:00Z",
+              manual_last_viewed_at: "2026-02-19T03:05:00Z",
+              reply_total_count: 3,
+              student_reply_count: 2,
+              teacher_reply_count: 1,
+              pending_teacher_reply: true,
+              last_reply_role: "student",
+              last_reply_at: "2026-02-19T03:06:00Z"
             }
           ]
         }),
@@ -626,6 +636,7 @@ describe("frontend smoke", () => {
     const data = await getAssignmentGradingQueue("asg-1");
     expect(data.total_submissions).toBe(1);
     expect(data.items[0].manual_status).toBe("published");
+    expect(data.items[0].pending_teacher_reply).toBe(true);
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/backend/api/v1/assignments/asg-1/grading-queue",
       expect.objectContaining({ method: "GET" })

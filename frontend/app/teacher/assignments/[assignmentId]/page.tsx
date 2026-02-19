@@ -95,6 +95,7 @@ export default function TeacherAssignmentDetailPage() {
   const [replyDraftBySubmissionId, setReplyDraftBySubmissionId] = useState<Record<string, string>>({});
   const [replyLoadingSubmissionId, setReplyLoadingSubmissionId] = useState("");
   const [replySubmittingSubmissionId, setReplySubmittingSubmissionId] = useState("");
+  const [showOnlyPendingReplies, setShowOnlyPendingReplies] = useState(false);
 
   useEffect(() => {
     const session = getAuthSession();
@@ -338,6 +339,38 @@ export default function TeacherAssignmentDetailPage() {
     }
   };
 
+  const rankedSubmissions = useMemo(() => {
+    if (!detail) {
+      return [];
+    }
+    return [...detail.submissions].sort((a, b) => {
+      const aQueue = queueBySubmissionId[a.submission_id];
+      const bQueue = queueBySubmissionId[b.submission_id];
+      const pendingWeight =
+        Number(Boolean(bQueue?.pending_teacher_reply)) - Number(Boolean(aQueue?.pending_teacher_reply));
+      if (pendingWeight !== 0) {
+        return pendingWeight;
+      }
+      const studentReplyWeight = (bQueue?.student_reply_count || 0) - (aQueue?.student_reply_count || 0);
+      if (studentReplyWeight !== 0) {
+        return studentReplyWeight;
+      }
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [detail, queueBySubmissionId]);
+
+  const visibleSubmissions = useMemo(() => {
+    if (!showOnlyPendingReplies) {
+      return rankedSubmissions;
+    }
+    return rankedSubmissions.filter((item) => queueBySubmissionId[item.submission_id]?.pending_teacher_reply);
+  }, [queueBySubmissionId, rankedSubmissions, showOnlyPendingReplies]);
+
+  const pendingReplyCount = useMemo(
+    () => Object.values(queueBySubmissionId).filter((item) => item.pending_teacher_reply).length,
+    [queueBySubmissionId]
+  );
+
   if (!currentUser || currentUser.role !== "teacher") {
     return (
       <main className="mx-auto min-h-screen max-w-4xl p-6 md:p-10">
@@ -422,11 +455,23 @@ export default function TeacherAssignmentDetailPage() {
                 <p className="mt-1 text-xs text-slate-700">
                   手工批改：草稿 {queueStats.draft} · 已发布 {queueStats.published} · 队列 {queueStats.total}
                 </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <p className="text-xs text-slate-700">待老师回复：{pendingReplyCount}</p>
+                  <button
+                    className="btn-seal px-3 py-1 text-xs"
+                    onClick={() => {
+                      setShowOnlyPendingReplies((prev) => !prev);
+                    }}
+                    type="button"
+                  >
+                    {showOnlyPendingReplies ? "显示全部提交" : "只看待回复"}
+                  </button>
+                </div>
                 <ul className="mt-3 space-y-2">
-                  {detail.submissions.length === 0 ? (
+                  {visibleSubmissions.length === 0 ? (
                     <li className="text-sm text-slate-600">暂无学生提交，后续可接入 Agent 批改流程。</li>
                   ) : (
-                    detail.submissions.map((submission) => {
+                    visibleSubmissions.map((submission) => {
                       const queueItem = queueBySubmissionId[submission.submission_id];
                       const isEditingManual = manualEditingSubmissionId === submission.submission_id;
                       const isManualLoading = manualLoadingSubmissionId === submission.submission_id;
@@ -464,6 +509,13 @@ export default function TeacherAssignmentDetailPage() {
                                 ? `已读（${queueItem.manual_view_count} 次）`
                                 : "未读"}
                               {queueItem.manual_last_viewed_at ? ` · 最近阅读 ${queueItem.manual_last_viewed_at}` : ""}
+                            </p>
+                          ) : null}
+                          {queueItem?.manual_status === "published" ? (
+                            <p className="mt-1 text-xs text-slate-600">
+                              批改沟通：学生 {queueItem.student_reply_count} · 老师 {queueItem.teacher_reply_count}
+                              {queueItem.pending_teacher_reply ? " · 待老师回复" : ""}
+                              {queueItem.last_reply_at ? ` · 最近互动 ${queueItem.last_reply_at}` : ""}
                             </p>
                           ) : null}
                           {submission.latest_review_score !== null && submission.latest_review_score !== undefined ? (

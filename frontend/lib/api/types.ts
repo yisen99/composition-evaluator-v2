@@ -289,6 +289,12 @@ export type AssignmentGradingQueueItem = {
   manual_view_count: number;
   manual_first_viewed_at?: string | null;
   manual_last_viewed_at?: string | null;
+  reply_total_count: number;
+  student_reply_count: number;
+  teacher_reply_count: number;
+  pending_teacher_reply: boolean;
+  last_reply_role?: "teacher" | "student" | null;
+  last_reply_at?: string | null;
 };
 
 export type AssignmentGradingQueueResponse = {

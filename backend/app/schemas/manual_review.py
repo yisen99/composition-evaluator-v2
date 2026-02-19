@@ -120,6 +120,12 @@ class AssignmentGradingQueueItem(BaseModel):
     manual_view_count: int = 0
     manual_first_viewed_at: datetime | None = None
     manual_last_viewed_at: datetime | None = None
+    reply_total_count: int = 0
+    student_reply_count: int = 0
+    teacher_reply_count: int = 0
+    pending_teacher_reply: bool = False
+    last_reply_role: ManualReviewReplyAuthorRole | None = None
+    last_reply_at: datetime | None = None
 
 
 class AssignmentGradingQueueResponse(BaseModel):
