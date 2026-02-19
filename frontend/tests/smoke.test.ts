@@ -10,6 +10,7 @@ import {
   createAssignment,
   createClass,
   getMyProgress,
+  listMySubmissions,
   getAssignmentDetail,
   getStudentMemory,
   joinClass,
@@ -418,6 +419,38 @@ describe("frontend smoke", () => {
     vi.unstubAllGlobals();
   });
 
+  it("lists student submissions via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            submission_id: "sub-1",
+            assignment_id: "asg-1",
+            assignment_title: "我的校园",
+            class_id: "class-1",
+            class_name: "三年级一班",
+            content_type: "text",
+            status: "submitted",
+            created_at: "2026-02-19T00:00:00Z",
+            text_excerpt: "操场上有风，树叶在阳光下发亮。"
+          }
+        ]),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await listMySubmissions();
+    expect(data).toHaveLength(1);
+    expect(data[0].submission_id).toBe("sub-1");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/submissions/me",
+      expect.objectContaining({ method: "GET" })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
   it("registers account via mature auth backend", async () => {
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(
@@ -494,6 +527,46 @@ describe("frontend smoke", () => {
         display_name: "王老师"
       })
     ).rejects.toThrow("老师账号不支持短信注册，请使用邮箱密码注册/登录。");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("maps overdue submission error to friendly chinese message", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "Assignment due date has passed" }), {
+        status: 409,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(
+      createCompositionSubmission({
+        assignment_id: "asg-1",
+        content_type: "text",
+        text_content: "测试"
+      })
+    ).rejects.toThrow("任务已截止，无法继续提交。");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("maps file too large error to friendly chinese message", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: "File is too large. Max bytes: 10485760" }), {
+        status: 413,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(
+      createCompositionSubmission({
+        assignment_id: "asg-1",
+        content_type: "document",
+        file: new File(["x"], "essay.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })
+      })
+    ).rejects.toThrow("文件过大，请控制在 10MB 内后重试。");
 
     vi.unstubAllGlobals();
   });

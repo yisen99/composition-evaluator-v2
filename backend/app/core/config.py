@@ -14,6 +14,7 @@ class Settings(BaseModel):
     auth_fixed_code: str | None = None
     storage_root: str = "./storage/uploads"
     storage_public_base_url: str = "/storage/uploads"
+    submission_max_upload_bytes: int = 10 * 1024 * 1024
     qwen_api_key: str | None = None
     qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
     qwen_model: str = "qwen-max"
@@ -31,6 +32,7 @@ settings = Settings(
     auth_fixed_code=os.getenv("AUTH_FIXED_CODE") or None,
     storage_root=os.getenv("STORAGE_ROOT", "./storage/uploads"),
     storage_public_base_url=os.getenv("STORAGE_PUBLIC_BASE_URL", "/storage/uploads"),
+    submission_max_upload_bytes=int(os.getenv("SUBMISSION_MAX_UPLOAD_BYTES", str(10 * 1024 * 1024))),
     qwen_api_key=os.getenv("QWEN_API_KEY"),
     qwen_base_url=os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
     qwen_model=os.getenv("QWEN_MODEL", "qwen-max"),

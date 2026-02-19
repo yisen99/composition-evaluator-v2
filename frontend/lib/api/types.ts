@@ -150,6 +150,21 @@ export type CreateCompositionSubmissionResponse = {
   created_at: string;
 };
 
+export type StudentSubmissionListItem = {
+  submission_id: string;
+  assignment_id: string;
+  assignment_title: string;
+  class_id: string;
+  class_name: string;
+  content_type: SubmissionContentType;
+  status: string;
+  created_at: string;
+  due_at?: string | null;
+  file_name?: string | null;
+  file_url?: string | null;
+  text_excerpt?: string | null;
+};
+
 export type ReviewAgentName = "structure" | "language" | "value";
 
 export type RunSubmissionReviewRequest = {

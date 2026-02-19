@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
@@ -5,12 +7,84 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps.auth import require_student
+from app.core.config import settings
 from app.db.deps import get_db
-from app.models import Assignment, ClassMember, Submission, User
-from app.schemas.submission import CreateSubmissionResponse, SubmissionContentType
+from app.models import Assignment, ClassMember, ClassRoom, Submission, User
+from app.schemas.submission import CreateSubmissionResponse, StudentSubmissionListItem, SubmissionContentType
 from app.services.storage import get_storage_backend
 
 router = APIRouter()
+
+IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+DOCUMENT_EXTENSIONS = {".doc", ".docx", ".pdf", ".txt", ".md"}
+
+
+def _is_assignment_overdue(due_at: datetime | None) -> bool:
+    if due_at is None:
+        return False
+    normalized_due_at = due_at if due_at.tzinfo else due_at.replace(tzinfo=timezone.utc)
+    return normalized_due_at < datetime.now(timezone.utc)
+
+
+def _ensure_assignment_is_open(assignment: Assignment) -> None:
+    if assignment.status != "published":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Assignment is not open for submission")
+    if _is_assignment_overdue(assignment.due_at):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Assignment due date has passed")
+
+
+async def _validate_file_before_storage(content_type: SubmissionContentType, file: UploadFile) -> None:
+    original_name = file.filename or ""
+    suffix = Path(original_name).suffix.lower()
+    file_content_type = (file.content_type or "").lower()
+
+    if content_type == "image":
+        if suffix not in IMAGE_EXTENSIONS or not file_content_type.startswith("image/"):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Unsupported image file type")
+    elif content_type == "document":
+        if suffix not in DOCUMENT_EXTENSIONS:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Unsupported document file type")
+
+    # Read at most max+1 bytes to enforce hard limit while keeping memory bounded.
+    sampled_content = await file.read(settings.submission_max_upload_bytes + 1)
+    await file.seek(0)
+    if len(sampled_content) > settings.submission_max_upload_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File is too large. Max bytes: {settings.submission_max_upload_bytes}",
+        )
+
+
+@router.get("/me", response_model=list[StudentSubmissionListItem])
+def list_my_submissions(
+    db: Session = Depends(get_db),
+    current_student: User = Depends(require_student),
+) -> list[StudentSubmissionListItem]:
+    rows = db.execute(
+        select(Submission, Assignment.title, Assignment.due_at, ClassRoom.name)
+        .join(Assignment, Assignment.id == Submission.assignment_id)
+        .join(ClassRoom, ClassRoom.id == Submission.class_id)
+        .where(Submission.student_id == current_student.id)
+        .order_by(Submission.created_at.desc())
+    ).all()
+
+    return [
+        StudentSubmissionListItem(
+            submission_id=submission.id,
+            assignment_id=submission.assignment_id,
+            assignment_title=assignment_title,
+            class_id=submission.class_id,
+            class_name=class_name,
+            content_type=submission.content_type,
+            status=submission.status,
+            created_at=submission.created_at,
+            due_at=due_at,
+            file_name=submission.file_name,
+            file_url=submission.file_url,
+            text_excerpt=submission.text_content[:120] if submission.text_content else None,
+        )
+        for submission, assignment_title, due_at, class_name in rows
+    ]
 
 
 @router.post("", response_model=CreateSubmissionResponse, status_code=status.HTTP_201_CREATED)
@@ -25,6 +99,7 @@ async def create_submission(
     assignment = db.get(Assignment, assignment_id)
     if not assignment:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Assignment not found")
+    _ensure_assignment_is_open(assignment)
 
     membership = db.scalar(
         select(ClassMember).where(
@@ -43,15 +118,16 @@ async def create_submission(
     if content_type == "text":
         normalized_text = (text_content or "").strip()
         if not normalized_text:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Text content is required")
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Text content is required")
         if file:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="Text submission does not accept file",
             )
     else:
         if file is None:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="File is required")
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="File is required")
+        await _validate_file_before_storage(content_type, file)
         storage = get_storage_backend()
         stored = await storage.save_upload(
             file,

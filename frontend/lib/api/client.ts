@@ -22,6 +22,7 @@ import type {
   SendCodeRequest,
   SendCodeResponse,
   StudentProgressResponse,
+  StudentSubmissionListItem,
   StudentMemoryResponse
 } from "@/lib/api/types";
 import { getAccessToken } from "@/lib/auth/session";
@@ -30,7 +31,11 @@ export const API_PROXY_PREFIX = "/api/backend";
 const API_ERROR_MESSAGES: Record<string, string> = {
   REGISTER_USER_ALREADY_EXISTS: "该邮箱或手机号已被注册，请更换后重试。",
   LOGIN_BAD_CREDENTIALS: "账号或密码错误，请检查后重试。",
-  "Teacher SMS signup is disabled": "老师账号不支持短信注册，请使用邮箱密码注册/登录。"
+  "Teacher SMS signup is disabled": "老师账号不支持短信注册，请使用邮箱密码注册/登录。",
+  "Assignment due date has passed": "任务已截止，无法继续提交。",
+  "Assignment is not open for submission": "当前任务未开放提交。",
+  "Unsupported image file type": "图片格式不支持，请使用 jpg/jpeg/png/webp/gif。",
+  "Unsupported document file type": "文档格式不支持，请使用 doc/docx/pdf/txt/md。"
 };
 
 type ErrorDetailItem = {
@@ -65,6 +70,9 @@ function extractErrorDetail(payload: unknown): string | undefined {
 }
 
 function toDisplayErrorMessage(status: number, detail?: string): string {
+  if (detail?.startsWith("File is too large")) {
+    return "文件过大，请控制在 10MB 内后重试。";
+  }
   if (detail && API_ERROR_MESSAGES[detail]) {
     return API_ERROR_MESSAGES[detail];
   }
@@ -292,6 +300,12 @@ export function createReviewSummary(payload: ReviewSummaryRequest): Promise<Revi
 
 export function getMyProgress(): Promise<StudentProgressResponse> {
   return apiRequest<StudentProgressResponse>("/api/v1/students/me/progress", {
+    method: "GET"
+  });
+}
+
+export function listMySubmissions(): Promise<StudentSubmissionListItem[]> {
+  return apiRequest<StudentSubmissionListItem[]>("/api/v1/submissions/me", {
     method: "GET"
   });
 }

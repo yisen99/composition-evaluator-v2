@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
-import { createCompositionSubmission, joinClass, listAssignments, listClasses } from "@/lib/api/client";
+import { createCompositionSubmission, joinClass, listAssignments, listClasses, listMySubmissions } from "@/lib/api/client";
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
-import type { AssignmentListItem, ClassListItem, SubmissionContentType, UserProfile } from "@/lib/api/types";
+import { validateSubmissionDraft } from "@/lib/submission/validation";
+import type { AssignmentListItem, ClassListItem, StudentSubmissionListItem, SubmissionContentType, UserProfile } from "@/lib/api/types";
 
 type Toast = {
   type: "ok" | "error";
@@ -18,6 +19,7 @@ export default function StudentPage() {
   const [result, setResult] = useState<{ class_id: string; class_name: string } | null>(null);
   const [classroomList, setClassroomList] = useState<ClassListItem[]>([]);
   const [assignmentList, setAssignmentList] = useState<AssignmentListItem[]>([]);
+  const [submissionList, setSubmissionList] = useState<StudentSubmissionListItem[]>([]);
   const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
   const [submissionType, setSubmissionType] = useState<SubmissionContentType>("text");
@@ -35,9 +37,14 @@ export default function StudentPage() {
   const hydrateWorkspace = async () => {
     setBusy("loading");
     try {
-      const [loadedClasses, loadedAssignments] = await Promise.all([listClasses(), listAssignments()]);
+      const [loadedClasses, loadedAssignments, loadedSubmissions] = await Promise.all([
+        listClasses(),
+        listAssignments(),
+        listMySubmissions()
+      ]);
       setClassroomList(loadedClasses);
       setAssignmentList(loadedAssignments);
+      setSubmissionList(loadedSubmissions);
       setSelectedClassId((prev) => prev || loadedClasses[0]?.class_id || "");
     } catch (error) {
       setToast({ type: "error", message: `数据加载失败：${(error as Error).message}` });
@@ -102,6 +109,15 @@ export default function StudentPage() {
       setToast({ type: "error", message: "请先选择要提交的任务。" });
       return;
     }
+    const validationError = validateSubmissionDraft({
+      submissionType,
+      textContent,
+      uploadFile
+    });
+    if (validationError) {
+      setToast({ type: "error", message: validationError });
+      return;
+    }
 
     const payload: {
       assignment_id: string;
@@ -115,15 +131,8 @@ export default function StudentPage() {
 
     if (submissionType === "text") {
       const normalizedText = textContent.trim();
-      if (!normalizedText) {
-        setToast({ type: "error", message: "文本内容不能为空。" });
-        return;
-      }
       payload.text_content = normalizedText;
-    } else if (!uploadFile) {
-      setToast({ type: "error", message: "图片/文档提交需要先选择文件。" });
-      return;
-    } else {
+    } else if (uploadFile) {
       payload.file = uploadFile;
     }
 
@@ -133,6 +142,7 @@ export default function StudentPage() {
       const submitted = await createCompositionSubmission(payload);
       setToast({ type: "ok", message: `提交成功，提交ID：${submitted.submission_id}` });
       setUploadFile(null);
+      await hydrateWorkspace();
     } catch (error) {
       setToast({ type: "error", message: `提交失败：${(error as Error).message}` });
     } finally {
@@ -272,9 +282,12 @@ export default function StudentPage() {
                   <input
                     className="field mt-1"
                     type="file"
-                    accept={submissionType === "image" ? "image/*" : ".doc,.docx,.pdf,.txt"}
+                    accept={submissionType === "image" ? "image/*" : ".doc,.docx,.pdf,.txt,.md"}
                     onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
                   />
+                  <p className="mt-2 text-xs text-slate-600">
+                    支持 10MB 以内文件；图片仅支持 jpg/jpeg/png/webp/gif，文档支持 doc/docx/pdf/txt/md。
+                  </p>
                 </div>
               )}
 
@@ -339,6 +352,36 @@ export default function StudentPage() {
                   )}
                 </ul>
               </div>
+            </div>
+            <div className="paper-card p-4">
+              <p className="label">我的最近提交</p>
+              <ul className="mt-2 space-y-2 text-sm">
+                {submissionList.length === 0 ? (
+                  <li className="text-slate-600">暂无提交记录。</li>
+                ) : (
+                  submissionList.slice(0, 8).map((item) => (
+                    <li key={item.submission_id} className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-2">
+                      <p className="font-semibold">{item.assignment_title}</p>
+                      <p className="text-xs text-slate-700">提交ID：{item.submission_id}</p>
+                      <p className="text-xs text-slate-700">
+                        班级：{item.class_name} · 类型：{item.content_type} · 状态：{item.status}
+                      </p>
+                      <p className="text-xs text-slate-700">
+                        提交时间：{new Date(item.created_at).toLocaleString("zh-CN", { hour12: false })}
+                      </p>
+                      {item.text_excerpt ? <p className="mt-1 text-xs text-slate-700">摘要：{item.text_excerpt}</p> : null}
+                      {item.file_url ? (
+                        <p className="mt-1 text-xs text-slate-700">
+                          文件：
+                          <a className="underline" href={item.file_url} target="_blank" rel="noreferrer">
+                            {item.file_name || "查看文件"}
+                          </a>
+                        </p>
+                      ) : null}
+                    </li>
+                  ))
+                )}
+              </ul>
             </div>
           </div>
         </div>
