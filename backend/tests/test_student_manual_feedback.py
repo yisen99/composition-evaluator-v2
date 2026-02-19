@@ -61,7 +61,7 @@ def _login(
     return payload["access_token"], payload["user"]
 
 
-def _seed_submission(client: TestClient) -> tuple[str, str, str]:
+def _seed_submission(client: TestClient) -> tuple[str, str, str, str]:
     teacher_token, _ = _login(
         client,
         phone=_phone(f"teacher-student-feedback-{time.time_ns()}"),
@@ -114,12 +114,12 @@ def _seed_submission(client: TestClient) -> tuple[str, str, str]:
     )
     assert submission_response.status_code == 201
     submission_payload = submission_response.json()
-    return teacher_token, student_token, submission_payload["submission_id"]
+    return teacher_token, student_token, assignment_payload["assignment_id"], submission_payload["submission_id"]
 
 
 def test_student_can_view_published_manual_feedback() -> None:
     with TestClient(app) as client:
-        teacher_token, student_token, submission_id = _seed_submission(client)
+        teacher_token, student_token, _, submission_id = _seed_submission(client)
 
         for agent_name in ("structure", "language", "value"):
             run_response = client.post(
@@ -173,7 +173,7 @@ def test_student_can_view_published_manual_feedback() -> None:
 
 def test_student_cannot_view_draft_manual_feedback() -> None:
     with TestClient(app) as client:
-        teacher_token, student_token, submission_id = _seed_submission(client)
+        teacher_token, student_token, _, submission_id = _seed_submission(client)
 
         save_response = client.post(
             "/api/v1/manual-reviews/draft",
@@ -197,3 +197,65 @@ def test_student_cannot_view_draft_manual_feedback() -> None:
     assert student_feedback_response.status_code == 200
     payload = student_feedback_response.json()
     assert payload == []
+
+
+def test_student_mark_feedback_read_updates_teacher_queue() -> None:
+    with TestClient(app) as client:
+        teacher_token, student_token, assignment_id, submission_id = _seed_submission(client)
+
+        save_response = client.post(
+            "/api/v1/manual-reviews/draft",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={
+                "submission_id": submission_id,
+                "structure_score": 85,
+                "language_score": 86,
+                "value_score": 87,
+                "summary_feedback": "发布前草稿。",
+                "actionable_suggestions": ["补充场景细节。", "结尾回扣主题。"],
+            },
+        )
+        assert save_response.status_code == 200
+        publish_response = client.post(
+            "/api/v1/manual-reviews/publish",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+            json={"submission_id": submission_id},
+        )
+        assert publish_response.status_code == 200
+
+        initial_queue_response = client.get(
+            f"/api/v1/assignments/{assignment_id}/grading-queue",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+        )
+        assert initial_queue_response.status_code == 200
+        initial_item = initial_queue_response.json()["items"][0]
+        assert initial_item["manual_viewed"] is False
+        assert initial_item["manual_view_count"] == 0
+
+        first_read_response = client.post(
+            "/api/v1/submissions/me/manual-feedback/mark-read",
+            headers={"Authorization": f"Bearer {student_token}"},
+            json={"submission_ids": [submission_id]},
+        )
+        assert first_read_response.status_code == 200
+        assert first_read_response.json()["marked_count"] == 1
+
+        second_read_response = client.post(
+            "/api/v1/submissions/me/manual-feedback/mark-read",
+            headers={"Authorization": f"Bearer {student_token}"},
+            json={"submission_ids": [submission_id]},
+        )
+        assert second_read_response.status_code == 200
+        assert second_read_response.json()["marked_count"] == 1
+
+        queue_response = client.get(
+            f"/api/v1/assignments/{assignment_id}/grading-queue",
+            headers={"Authorization": f"Bearer {teacher_token}"},
+        )
+
+    assert queue_response.status_code == 200
+    item = queue_response.json()["items"][0]
+    assert item["manual_viewed"] is True
+    assert item["manual_view_count"] == 2
+    assert item["manual_first_viewed_at"] is not None
+    assert item["manual_last_viewed_at"] is not None

@@ -182,6 +182,9 @@ export type StudentManualFeedbackItem = {
   strengths?: string | null;
   next_goal?: string | null;
   manual_published_at?: string | null;
+  manual_view_count?: number;
+  manual_first_viewed_at?: string | null;
+  manual_last_viewed_at?: string | null;
   agent_summary?: {
     total_score?: number | null;
     radar: {
@@ -196,6 +199,10 @@ export type StudentManualFeedbackItem = {
       created_at: string;
     }[];
   } | null;
+};
+
+export type MarkManualFeedbackReadResponse = {
+  marked_count: number;
 };
 
 export type ManualReviewStatus = "draft" | "published";
@@ -254,6 +261,10 @@ export type AssignmentGradingQueueItem = {
   manual_total_score?: number | null;
   manual_updated_at?: string | null;
   manual_published_at?: string | null;
+  manual_viewed: boolean;
+  manual_view_count: number;
+  manual_first_viewed_at?: string | null;
+  manual_last_viewed_at?: string | null;
 };
 
 export type AssignmentGradingQueueResponse = {

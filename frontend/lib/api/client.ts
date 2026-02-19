@@ -16,6 +16,7 @@ import type {
   JoinClassResponse,
   LoginRequest,
   LoginResponse,
+  MarkManualFeedbackReadResponse,
   ManualReviewDraftRequest,
   ManualReviewItem,
   ManualReviewPublishRequest,
@@ -346,5 +347,12 @@ export function listMySubmissions(): Promise<StudentSubmissionListItem[]> {
 export function listMyManualFeedback(): Promise<StudentManualFeedbackItem[]> {
   return apiRequest<StudentManualFeedbackItem[]>("/api/v1/submissions/me/manual-feedback", {
     method: "GET"
+  });
+}
+
+export function markMyManualFeedbackRead(submissionIds: string[]): Promise<MarkManualFeedbackReadResponse> {
+  return apiRequest<MarkManualFeedbackReadResponse>("/api/v1/submissions/me/manual-feedback/mark-read", {
+    method: "POST",
+    body: JSON.stringify({ submission_ids: submissionIds })
   });
 }

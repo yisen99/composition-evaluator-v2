@@ -412,6 +412,15 @@ export default function TeacherAssignmentDetailPage() {
                           {queueItem?.manual_updated_at ? (
                             <p className="mt-1 text-xs text-slate-600">最近更新：{queueItem.manual_updated_at}</p>
                           ) : null}
+                          {queueItem?.manual_status === "published" ? (
+                            <p className="mt-1 text-xs text-slate-600">
+                              学生阅读：
+                              {queueItem.manual_viewed
+                                ? `已读（${queueItem.manual_view_count} 次）`
+                                : "未读"}
+                              {queueItem.manual_last_viewed_at ? ` · 最近阅读 ${queueItem.manual_last_viewed_at}` : ""}
+                            </p>
+                          ) : null}
                           {submission.latest_review_score !== null && submission.latest_review_score !== undefined ? (
                             <div className="mt-2 rounded-md border border-emerald-700/25 bg-emerald-50 px-2 py-2 text-xs text-emerald-900">
                               <p>

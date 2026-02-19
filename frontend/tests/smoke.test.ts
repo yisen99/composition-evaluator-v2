@@ -13,6 +13,7 @@ import {
   getManualReviewForSubmission,
   getMyProgress,
   listMyManualFeedback,
+  markMyManualFeedbackRead,
   listMySubmissions,
   publishManualReview,
   saveManualReviewDraft,
@@ -645,6 +646,9 @@ describe("frontend smoke", () => {
             actionable_suggestions: ["补充动作细节。", "结尾增加反思。"],
             strengths: "开头切题快。",
             next_goal: "练习过渡句。",
+            manual_view_count: 1,
+            manual_first_viewed_at: "2026-02-19T03:10:00Z",
+            manual_last_viewed_at: "2026-02-19T03:10:00Z",
             manual_published_at: "2026-02-19T02:10:00Z",
             agent_summary: {
               total_score: 86,
@@ -680,11 +684,34 @@ describe("frontend smoke", () => {
     const data = await listMyManualFeedback();
     expect(data).toHaveLength(1);
     expect(data[0].manual_total_score).toBe(88);
+    expect(data[0].manual_view_count).toBe(1);
     expect(data[0].agent_summary?.total_score).toBe(86);
     expect(data[0].agent_summary?.items).toHaveLength(3);
     expect(mockFetch).toHaveBeenCalledWith(
       "/api/backend/api/v1/submissions/me/manual-feedback",
       expect.objectContaining({ method: "GET" })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("marks manual feedback as read via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ marked_count: 1 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await markMyManualFeedbackRead(["sub-1"]);
+    expect(data.marked_count).toBe(1);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/submissions/me/manual-feedback/mark-read",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ submission_ids: ["sub-1"] })
+      })
     );
 
     vi.unstubAllGlobals();

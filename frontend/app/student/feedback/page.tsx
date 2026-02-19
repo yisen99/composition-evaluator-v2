@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { listMyManualFeedback } from "@/lib/api/client";
+import { listMyManualFeedback, markMyManualFeedbackRead } from "@/lib/api/client";
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
 import type { StudentManualFeedbackItem, UserProfile } from "@/lib/api/types";
 
@@ -27,8 +27,12 @@ export default function StudentFeedbackPage() {
       setError("");
       try {
         const payload = await listMyManualFeedback();
+        if (payload.length > 0) {
+          await markMyManualFeedbackRead(payload.map((item) => item.submission_id));
+        }
+        const refreshed = await listMyManualFeedback();
         if (!cancelled) {
-          setItems(payload);
+          setItems(refreshed);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -134,6 +138,12 @@ export default function StudentFeedbackPage() {
                     <p className="text-xs text-slate-600">班级：{item.class_name}</p>
                     <p className="mt-1 text-xs text-slate-700">
                       总分 {item.manual_total_score} · 结构 {item.structure_score} · 语言 {item.language_score} · 立意 {item.value_score}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      已读次数：{item.manual_view_count ?? 0}
+                      {item.manual_last_viewed_at
+                        ? ` · 最近查看 ${new Date(item.manual_last_viewed_at).toLocaleString("zh-CN", { hour12: false })}`
+                        : ""}
                     </p>
                     <div className="mt-2 grid gap-3 lg:grid-cols-2">
                       <div className="rounded-md border border-slate-200/70 bg-white/80 px-2 py-2">

@@ -9,9 +9,20 @@ from sqlalchemy.orm import Session
 from app.api.deps.auth import require_student
 from app.core.config import settings
 from app.db.deps import get_db
-from app.models import Assignment, ClassMember, ClassRoom, ManualReview, Submission, SubmissionReview, User
+from app.models import (
+    Assignment,
+    ClassMember,
+    ClassRoom,
+    ManualFeedbackReceipt,
+    ManualReview,
+    Submission,
+    SubmissionReview,
+    User,
+)
 from app.schemas.submission import (
     CreateSubmissionResponse,
+    MarkManualFeedbackReadRequest,
+    MarkManualFeedbackReadResponse,
     StudentAgentDimensionScore,
     StudentAgentReviewItem,
     StudentAgentSummary,
@@ -144,7 +155,7 @@ def list_my_manual_feedback(
     current_student: User = Depends(require_student),
 ) -> list[StudentManualFeedbackItem]:
     rows = db.execute(
-        select(Submission, Assignment.title, ClassRoom.name, ManualReview)
+        select(Submission, Assignment.title, ClassRoom.name, ManualReview, ManualFeedbackReceipt)
         .join(Assignment, Assignment.id == Submission.assignment_id)
         .join(ClassRoom, ClassRoom.id == Submission.class_id)
         .join(
@@ -153,6 +164,13 @@ def list_my_manual_feedback(
                 ManualReview.submission_id == Submission.id,
                 ManualReview.student_id == current_student.id,
                 ManualReview.status == "published",
+            ),
+        )
+        .outerjoin(
+            ManualFeedbackReceipt,
+            and_(
+                ManualFeedbackReceipt.submission_id == Submission.id,
+                ManualFeedbackReceipt.student_id == current_student.id,
             ),
         )
         .where(Submission.student_id == current_student.id)
@@ -177,10 +195,64 @@ def list_my_manual_feedback(
             strengths=manual_review.strengths,
             next_goal=manual_review.next_goal,
             manual_published_at=manual_review.published_at,
+            manual_view_count=receipt.view_count if receipt else 0,
+            manual_first_viewed_at=receipt.first_viewed_at if receipt else None,
+            manual_last_viewed_at=receipt.last_viewed_at if receipt else None,
             agent_summary=_load_latest_agent_summary(db, submission_id=submission.id),
         )
-        for submission, assignment_title, class_name, manual_review in rows
+        for submission, assignment_title, class_name, manual_review, receipt in rows
     ]
+
+
+@router.post("/me/manual-feedback/mark-read", response_model=MarkManualFeedbackReadResponse)
+def mark_my_manual_feedback_read(
+    payload: MarkManualFeedbackReadRequest,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(require_student),
+) -> MarkManualFeedbackReadResponse:
+    published_reviews = db.scalars(
+        select(ManualReview).where(
+            ManualReview.submission_id.in_(payload.submission_ids),
+            ManualReview.student_id == current_student.id,
+            ManualReview.status == "published",
+        )
+    ).all()
+    if not published_reviews:
+        return MarkManualFeedbackReadResponse(marked_count=0)
+
+    review_by_submission = {review.submission_id: review for review in published_reviews}
+    existing_receipts = db.scalars(
+        select(ManualFeedbackReceipt).where(
+            ManualFeedbackReceipt.submission_id.in_(list(review_by_submission.keys())),
+            ManualFeedbackReceipt.student_id == current_student.id,
+        )
+    ).all()
+    receipt_by_submission = {receipt.submission_id: receipt for receipt in existing_receipts}
+
+    now = datetime.now(timezone.utc)
+    for submission_id, review in review_by_submission.items():
+        receipt = receipt_by_submission.get(submission_id)
+        if receipt:
+            receipt.manual_review_id = review.id
+            receipt.last_viewed_at = now
+            receipt.view_count += 1
+            receipt.updated_at = now
+            continue
+
+        db.add(
+            ManualFeedbackReceipt(
+                id=str(uuid4()),
+                manual_review_id=review.id,
+                submission_id=submission_id,
+                student_id=current_student.id,
+                first_viewed_at=now,
+                last_viewed_at=now,
+                view_count=1,
+            )
+        )
+
+    db.commit()
+    return MarkManualFeedbackReadResponse(marked_count=len(review_by_submission))
 
 
 @router.post("", response_model=CreateSubmissionResponse, status_code=status.HTTP_201_CREATED)

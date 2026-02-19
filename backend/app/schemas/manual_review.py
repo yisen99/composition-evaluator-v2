@@ -85,6 +85,10 @@ class AssignmentGradingQueueItem(BaseModel):
     manual_total_score: int | None = None
     manual_updated_at: datetime | None = None
     manual_published_at: datetime | None = None
+    manual_viewed: bool = False
+    manual_view_count: int = 0
+    manual_first_viewed_at: datetime | None = None
+    manual_last_viewed_at: datetime | None = None
 
 
 class AssignmentGradingQueueResponse(BaseModel):

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 SubmissionContentType = Literal["text", "image", "document"]
 ReviewAgentName = Literal["structure", "language", "value"]
@@ -69,4 +69,30 @@ class StudentManualFeedbackItem(BaseModel):
     strengths: str | None = None
     next_goal: str | None = None
     manual_published_at: datetime | None = None
+    manual_view_count: int = 0
+    manual_first_viewed_at: datetime | None = None
+    manual_last_viewed_at: datetime | None = None
     agent_summary: StudentAgentSummary | None = None
+
+
+class MarkManualFeedbackReadRequest(BaseModel):
+    submission_ids: list[str] = Field(min_length=1, max_length=50)
+
+    @field_validator("submission_ids")
+    @classmethod
+    def _normalize_submission_ids(cls, value: list[str]) -> list[str]:
+        normalized = []
+        seen: set[str] = set()
+        for item in value:
+            submission_id = item.strip()
+            if not submission_id or submission_id in seen:
+                continue
+            seen.add(submission_id)
+            normalized.append(submission_id)
+        if not normalized:
+            raise ValueError("submission_ids must include at least 1 valid id")
+        return normalized
+
+
+class MarkManualFeedbackReadResponse(BaseModel):
+    marked_count: int

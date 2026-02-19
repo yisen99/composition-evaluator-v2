@@ -6,7 +6,17 @@ from sqlalchemy.orm import Session
 
 from app.api.deps.auth import get_current_user, require_teacher
 from app.db.deps import get_db
-from app.models import Assignment, ClassMember, ClassRoom, ManualReview, StudentMemoryNote, Submission, SubmissionReview, User
+from app.models import (
+    Assignment,
+    ClassMember,
+    ClassRoom,
+    ManualFeedbackReceipt,
+    ManualReview,
+    StudentMemoryNote,
+    Submission,
+    SubmissionReview,
+    User,
+)
 from app.schemas.assignment import (
     AssignmentDetailResponse,
     AssignmentListItem,
@@ -161,6 +171,17 @@ def get_assignment_grading_queue(
         )
     ).all()
     manual_by_submission = {item.submission_id: item for item in manual_reviews}
+    submission_ids = [submission.id for submission, _ in submission_rows]
+    manual_receipts = (
+        db.scalars(
+            select(ManualFeedbackReceipt).where(
+                ManualFeedbackReceipt.submission_id.in_(submission_ids),
+            )
+        ).all()
+        if submission_ids
+        else []
+    )
+    receipt_by_submission = {item.submission_id: item for item in manual_receipts}
 
     items: list[AssignmentGradingQueueItem] = []
     manual_draft_count = 0
@@ -171,6 +192,10 @@ def get_assignment_grading_queue(
         manual_total_score = None
         manual_updated_at = None
         manual_published_at = None
+        manual_viewed = False
+        manual_view_count = 0
+        manual_first_viewed_at = None
+        manual_last_viewed_at = None
         if manual:
             manual_status = manual.status
             manual_total_score = manual.total_score
@@ -180,6 +205,13 @@ def get_assignment_grading_queue(
                 manual_published_count += 1
             elif manual.status == "draft":
                 manual_draft_count += 1
+            if manual.status == "published":
+                receipt = receipt_by_submission.get(submission.id)
+                if receipt:
+                    manual_viewed = receipt.view_count > 0
+                    manual_view_count = receipt.view_count
+                    manual_first_viewed_at = receipt.first_viewed_at
+                    manual_last_viewed_at = receipt.last_viewed_at
 
         items.append(
             AssignmentGradingQueueItem(
@@ -192,6 +224,10 @@ def get_assignment_grading_queue(
                 manual_total_score=manual_total_score,
                 manual_updated_at=manual_updated_at,
                 manual_published_at=manual_published_at,
+                manual_viewed=manual_viewed,
+                manual_view_count=manual_view_count,
+                manual_first_viewed_at=manual_first_viewed_at,
+                manual_last_viewed_at=manual_last_viewed_at,
             )
         )
 
