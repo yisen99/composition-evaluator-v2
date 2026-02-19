@@ -140,7 +140,7 @@ export default function TeacherAssignmentDetailPage() {
           <div className="relative z-10 paper-card p-5">
             <h1 className="poster-title text-3xl font-bold">任务详情页需要教师登录</h1>
             <p className="mt-2 text-sm text-slate-700">请先登录教师账号后查看任务详情。</p>
-            <a className="btn-ink mt-4 inline-block text-sm" href="/login">
+            <a className="btn-ink mt-4 inline-block text-sm" href="/login/teacher">
               前往登录
             </a>
           </div>
@@ -163,7 +163,7 @@ export default function TeacherAssignmentDetailPage() {
                 className="underline"
                 onClick={() => {
                   clearAuthSession();
-                  window.location.href = "/login";
+                  window.location.href = "/login/teacher";
                 }}
                 type="button"
               >

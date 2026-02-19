@@ -147,7 +147,7 @@ export default function StudentPage() {
           <div className="relative z-10 paper-card p-5">
             <h1 className="poster-title text-3xl font-bold">学生页面需要学生登录</h1>
             <p className="mt-2 text-sm text-slate-700">请先登录为学生账号，再输入班级码加入班级。</p>
-            <a className="btn-seal mt-4 inline-block text-sm" href="/login">
+            <a className="btn-seal mt-4 inline-block text-sm" href="/login/student">
               前往登录
             </a>
           </div>
@@ -173,7 +173,7 @@ export default function StudentPage() {
                 className="underline"
                 onClick={() => {
                   clearAuthSession();
-                  window.location.href = "/login";
+                  window.location.href = "/login/student";
                 }}
                 type="button"
               >

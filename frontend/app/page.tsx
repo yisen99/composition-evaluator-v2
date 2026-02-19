@@ -46,8 +46,8 @@ export default function HomePage() {
             </a>
             <a className="paper-card p-5" href="/login">
               <p className="label">Auth</p>
-              <h2 className="mt-2 text-2xl font-semibold">登录占位页</h2>
-              <p className="mt-2 text-sm text-slate-700">账号密码登录 + 学生短信快捷登录入口。</p>
+              <h2 className="mt-2 text-2xl font-semibold">选择身份登录</h2>
+              <p className="mt-2 text-sm text-slate-700">进入老师/学生独立登录页。</p>
             </a>
           </div>
         </div>
