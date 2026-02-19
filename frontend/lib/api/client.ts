@@ -19,6 +19,7 @@ import type {
   MarkManualFeedbackReadResponse,
   ManualReviewDraftRequest,
   ManualReviewItem,
+  ManualReviewReplyItem,
   ManualReviewPublishRequest,
   ManualReviewSubmissionResponse,
   ReviewSummaryRequest,
@@ -43,7 +44,8 @@ const API_ERROR_MESSAGES: Record<string, string> = {
   "Assignment is not open for submission": "当前任务未开放提交。",
   "Unsupported image file type": "图片格式不支持，请使用 jpg/jpeg/png/webp/gif。",
   "Unsupported document file type": "文档格式不支持，请使用 doc/docx/pdf/txt/md。",
-  "Manual review draft not found": "尚未保存手工批改草稿，请先保存。"
+  "Manual review draft not found": "尚未保存手工批改草稿，请先保存。",
+  "Manual review is not published yet": "老师尚未发布手工批改，暂时不能回复。"
 };
 
 type ErrorDetailItem = {
@@ -332,6 +334,19 @@ export function publishManualReview(payload: ManualReviewPublishRequest): Promis
   });
 }
 
+export function listManualReviewRepliesForTeacher(submissionId: string): Promise<ManualReviewReplyItem[]> {
+  return apiRequest<ManualReviewReplyItem[]>(`/api/v1/manual-reviews/submission/${submissionId}/replies`, {
+    method: "GET"
+  });
+}
+
+export function createManualReviewReplyForTeacher(submissionId: string, content: string): Promise<ManualReviewReplyItem> {
+  return apiRequest<ManualReviewReplyItem>(`/api/v1/manual-reviews/submission/${submissionId}/replies`, {
+    method: "POST",
+    body: JSON.stringify({ content })
+  });
+}
+
 export function getMyProgress(): Promise<StudentProgressResponse> {
   return apiRequest<StudentProgressResponse>("/api/v1/students/me/progress", {
     method: "GET"
@@ -347,6 +362,19 @@ export function listMySubmissions(): Promise<StudentSubmissionListItem[]> {
 export function listMyManualFeedback(): Promise<StudentManualFeedbackItem[]> {
   return apiRequest<StudentManualFeedbackItem[]>("/api/v1/submissions/me/manual-feedback", {
     method: "GET"
+  });
+}
+
+export function listMyManualFeedbackReplies(submissionId: string): Promise<ManualReviewReplyItem[]> {
+  return apiRequest<ManualReviewReplyItem[]>(`/api/v1/submissions/me/manual-feedback/replies?submission_id=${submissionId}`, {
+    method: "GET"
+  });
+}
+
+export function createMyManualFeedbackReply(submissionId: string, content: string): Promise<ManualReviewReplyItem> {
+  return apiRequest<ManualReviewReplyItem>("/api/v1/submissions/me/manual-feedback/replies", {
+    method: "POST",
+    body: JSON.stringify({ submission_id: submissionId, content })
   });
 }
 

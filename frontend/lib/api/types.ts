@@ -207,6 +207,7 @@ export type MarkManualFeedbackReadResponse = {
 
 export type ManualReviewStatus = "draft" | "published";
 export type ManualReviewQueueStatus = "none" | "draft" | "published";
+export type ManualReviewReplyAuthorRole = "teacher" | "student";
 
 export type ManualReviewItem = {
   review_id: string;
@@ -249,6 +250,29 @@ export type ManualReviewDraftRequest = {
 
 export type ManualReviewPublishRequest = {
   submission_id: string;
+};
+
+export type ManualReviewReplyItem = {
+  reply_id: string;
+  manual_review_id: string;
+  submission_id: string;
+  assignment_id: string;
+  class_id: string;
+  student_id: string;
+  teacher_id: string;
+  author_role: ManualReviewReplyAuthorRole;
+  author_id: string;
+  content: string;
+  created_at: string;
+};
+
+export type StudentManualReviewReplyCreateRequest = {
+  submission_id: string;
+  content: string;
+};
+
+export type TeacherManualReviewReplyCreateRequest = {
+  content: string;
 };
 
 export type AssignmentGradingQueueItem = {

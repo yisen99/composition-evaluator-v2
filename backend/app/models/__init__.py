@@ -4,6 +4,7 @@ from app.models.classroom import ClassMember, ClassRoom
 from app.models.manual_feedback_receipt import ManualFeedbackReceipt
 from app.models.memory import StudentMemoryNote
 from app.models.manual_review import ManualReview
+from app.models.manual_review_reply import ManualReviewReply
 from app.models.review import SubmissionReview
 from app.models.submission import Submission
 from app.models.user import User
@@ -19,4 +20,5 @@ __all__ = [
     "StudentMemoryNote",
     "ManualReview",
     "ManualFeedbackReceipt",
+    "ManualReviewReply",
 ]

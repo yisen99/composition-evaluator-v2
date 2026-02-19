@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
+  createManualReviewReplyForTeacher,
   createReviewSummary,
   getAssignmentGradingQueue,
   getAssignmentDetail,
   getManualReviewForSubmission,
   getStudentMemory,
+  listManualReviewRepliesForTeacher,
   publishManualReview,
   runSubmissionReview,
   saveManualReviewDraft,
@@ -19,6 +21,7 @@ import type {
   AssignmentDetailResponse,
   ManualReviewDraftRequest,
   ManualReviewItem,
+  ManualReviewReplyItem,
   ReviewAgentName,
   ReviewSummaryResponse,
   StudentMemoryResponse,
@@ -88,6 +91,10 @@ export default function TeacherAssignmentDetailPage() {
   const [manualSavingSubmissionId, setManualSavingSubmissionId] = useState("");
   const [manualPublishingSubmissionId, setManualPublishingSubmissionId] = useState("");
   const [manualDraftForm, setManualDraftForm] = useState<ManualDraftForm>(emptyManualDraftForm());
+  const [replyThreadBySubmissionId, setReplyThreadBySubmissionId] = useState<Record<string, ManualReviewReplyItem[]>>({});
+  const [replyDraftBySubmissionId, setReplyDraftBySubmissionId] = useState<Record<string, string>>({});
+  const [replyLoadingSubmissionId, setReplyLoadingSubmissionId] = useState("");
+  const [replySubmittingSubmissionId, setReplySubmittingSubmissionId] = useState("");
 
   useEffect(() => {
     const session = getAuthSession();
@@ -297,6 +304,40 @@ export default function TeacherAssignmentDetailPage() {
     }
   };
 
+  const loadReplyThread = async (submissionId: string) => {
+    setReplyLoadingSubmissionId(submissionId);
+    setToast(null);
+    try {
+      const payload = await listManualReviewRepliesForTeacher(submissionId);
+      setReplyThreadBySubmissionId((prev) => ({ ...prev, [submissionId]: payload }));
+    } catch (replyError) {
+      setToast({ type: "error", message: `加载批改回复失败：${(replyError as Error).message}` });
+    } finally {
+      setReplyLoadingSubmissionId("");
+    }
+  };
+
+  const submitTeacherReply = async (submissionId: string) => {
+    const content = (replyDraftBySubmissionId[submissionId] || "").trim();
+    if (!content) {
+      setToast({ type: "error", message: "请输入回复内容后再发送。" });
+      return;
+    }
+    setReplySubmittingSubmissionId(submissionId);
+    setToast(null);
+    try {
+      await createManualReviewReplyForTeacher(submissionId, content);
+      setReplyDraftBySubmissionId((prev) => ({ ...prev, [submissionId]: "" }));
+      const payload = await listManualReviewRepliesForTeacher(submissionId);
+      setReplyThreadBySubmissionId((prev) => ({ ...prev, [submissionId]: payload }));
+      setToast({ type: "ok", message: "批改回复已发送给学生。" });
+    } catch (replyError) {
+      setToast({ type: "error", message: `回复发送失败：${(replyError as Error).message}` });
+    } finally {
+      setReplySubmittingSubmissionId("");
+    }
+  };
+
   if (!currentUser || currentUser.role !== "teacher") {
     return (
       <main className="mx-auto min-h-screen max-w-4xl p-6 md:p-10">
@@ -391,6 +432,10 @@ export default function TeacherAssignmentDetailPage() {
                       const isManualLoading = manualLoadingSubmissionId === submission.submission_id;
                       const isManualSaving = manualSavingSubmissionId === submission.submission_id;
                       const isManualPublishing = manualPublishingSubmissionId === submission.submission_id;
+                      const replyThread = replyThreadBySubmissionId[submission.submission_id];
+                      const replyDraft = replyDraftBySubmissionId[submission.submission_id] || "";
+                      const isReplyLoading = replyLoadingSubmissionId === submission.submission_id;
+                      const isReplySubmitting = replySubmittingSubmissionId === submission.submission_id;
 
                       const manualStatusText =
                         queueItem?.manual_status === "published"
@@ -495,7 +540,61 @@ export default function TeacherAssignmentDetailPage() {
                             >
                               {summarizingSubmissionId === submission.submission_id ? "汇总中..." : "生成多 Agent 汇总"}
                             </button>
+                            <button
+                              className="btn-seal px-3 py-1 text-xs"
+                              onClick={() => {
+                                void loadReplyThread(submission.submission_id);
+                              }}
+                              type="button"
+                              disabled={isReplyLoading}
+                            >
+                              {isReplyLoading ? "加载回复中..." : "查看批改回复"}
+                            </button>
                           </div>
+
+                          {replyThread ? (
+                            <div className="mt-3 rounded-md border border-slate-300/60 bg-slate-50/70 px-3 py-3">
+                              <p className="text-xs font-semibold text-slate-800">批改回复沟通区</p>
+                              <ul className="mt-2 space-y-1 text-xs text-slate-700">
+                                {replyThread.length === 0 ? (
+                                  <li>暂无回复记录。</li>
+                                ) : (
+                                  replyThread.map((reply) => (
+                                    <li key={reply.reply_id} className="rounded bg-white px-2 py-1">
+                                      <p className="font-semibold">
+                                        {reply.author_role === "teacher" ? "老师" : "学生"} ·{" "}
+                                        {new Date(reply.created_at).toLocaleString("zh-CN", { hour12: false })}
+                                      </p>
+                                      <p className="mt-1">{reply.content}</p>
+                                    </li>
+                                  ))
+                                )}
+                              </ul>
+                              <div className="mt-2 flex flex-col gap-2">
+                                <textarea
+                                  className="field min-h-16 text-xs"
+                                  value={replyDraft}
+                                  onChange={(event) =>
+                                    setReplyDraftBySubmissionId((prev) => ({
+                                      ...prev,
+                                      [submission.submission_id]: event.target.value
+                                    }))
+                                  }
+                                  placeholder="给学生的后续指导，例如：下一稿重点完善第二段过渡。"
+                                />
+                                <button
+                                  className="btn-ink w-fit px-3 py-1 text-xs"
+                                  onClick={() => {
+                                    void submitTeacherReply(submission.submission_id);
+                                  }}
+                                  type="button"
+                                  disabled={isReplySubmitting}
+                                >
+                                  {isReplySubmitting ? "发送中..." : "发送教师回复"}
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
 
                           {isEditingManual ? (
                             <div className="mt-3 rounded-md border border-amber-700/30 bg-amber-50/60 px-3 py-3">

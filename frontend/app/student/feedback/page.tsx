@@ -2,15 +2,25 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { listMyManualFeedback, markMyManualFeedbackRead } from "@/lib/api/client";
+import {
+  createMyManualFeedbackReply,
+  listMyManualFeedback,
+  listMyManualFeedbackReplies,
+  markMyManualFeedbackRead
+} from "@/lib/api/client";
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
-import type { StudentManualFeedbackItem, UserProfile } from "@/lib/api/types";
+import type { ManualReviewReplyItem, StudentManualFeedbackItem, UserProfile } from "@/lib/api/types";
 
 export default function StudentFeedbackPage() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [items, setItems] = useState<StudentManualFeedbackItem[]>([]);
+  const [repliesBySubmissionId, setRepliesBySubmissionId] = useState<Record<string, ManualReviewReplyItem[]>>({});
+  const [replyInputBySubmissionId, setReplyInputBySubmissionId] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [replyLoadingSubmissionId, setReplyLoadingSubmissionId] = useState("");
+  const [replyPostingSubmissionId, setReplyPostingSubmissionId] = useState("");
   const [error, setError] = useState("");
+  const [toast, setToast] = useState<{ type: "ok" | "error"; message: string } | null>(null);
 
   useEffect(() => {
     const session = getAuthSession();
@@ -25,6 +35,7 @@ export default function StudentFeedbackPage() {
     const load = async () => {
       setLoading(true);
       setError("");
+      setToast(null);
       try {
         const payload = await listMyManualFeedback();
         if (payload.length > 0) {
@@ -50,6 +61,40 @@ export default function StudentFeedbackPage() {
       cancelled = true;
     };
   }, [currentUser]);
+
+  const loadReplies = async (submissionId: string) => {
+    setReplyLoadingSubmissionId(submissionId);
+    setToast(null);
+    try {
+      const payload = await listMyManualFeedbackReplies(submissionId);
+      setRepliesBySubmissionId((prev) => ({ ...prev, [submissionId]: payload }));
+    } catch (loadError) {
+      setToast({ type: "error", message: `加载回复失败：${(loadError as Error).message}` });
+    } finally {
+      setReplyLoadingSubmissionId("");
+    }
+  };
+
+  const submitReply = async (submissionId: string) => {
+    const content = (replyInputBySubmissionId[submissionId] || "").trim();
+    if (!content) {
+      setToast({ type: "error", message: "请输入回复内容后再提交。" });
+      return;
+    }
+    setReplyPostingSubmissionId(submissionId);
+    setToast(null);
+    try {
+      await createMyManualFeedbackReply(submissionId, content);
+      setReplyInputBySubmissionId((prev) => ({ ...prev, [submissionId]: "" }));
+      const payload = await listMyManualFeedbackReplies(submissionId);
+      setRepliesBySubmissionId((prev) => ({ ...prev, [submissionId]: payload }));
+      setToast({ type: "ok", message: "回复已发送给老师。" });
+    } catch (submitError) {
+      setToast({ type: "error", message: `发送失败：${(submitError as Error).message}` });
+    } finally {
+      setReplyPostingSubmissionId("");
+    }
+  };
 
   if (!currentUser || currentUser.role !== "student") {
     return (
@@ -100,6 +145,17 @@ export default function StudentFeedbackPage() {
           {error ? (
             <div className="rounded-xl border border-rose-700/35 bg-rose-50 px-4 py-3 text-sm text-rose-900">
               加载失败：{error}
+            </div>
+          ) : null}
+          {toast ? (
+            <div
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                toast.type === "ok"
+                  ? "border-emerald-700/35 bg-emerald-50 text-emerald-900"
+                  : "border-rose-700/35 bg-rose-50 text-rose-900"
+              }`}
+            >
+              {toast.message}
             </div>
           ) : null}
 
@@ -184,6 +240,60 @@ export default function StudentFeedbackPage() {
                         ? new Date(item.manual_published_at).toLocaleString("zh-CN", { hour12: false })
                         : "--"}
                     </p>
+                    <div className="mt-2 rounded-md border border-slate-200/70 bg-slate-50/70 px-2 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          className="btn-seal px-3 py-1 text-xs"
+                          onClick={() => {
+                            void loadReplies(item.submission_id);
+                          }}
+                          type="button"
+                          disabled={replyLoadingSubmissionId === item.submission_id}
+                        >
+                          {replyLoadingSubmissionId === item.submission_id ? "加载中..." : "查看批改回复"}
+                        </button>
+                      </div>
+                      {repliesBySubmissionId[item.submission_id] ? (
+                        <ul className="mt-2 space-y-1 text-xs text-slate-700">
+                          {repliesBySubmissionId[item.submission_id].length === 0 ? (
+                            <li>暂无回复记录。</li>
+                          ) : (
+                            repliesBySubmissionId[item.submission_id].map((reply) => (
+                              <li key={reply.reply_id} className="rounded bg-white px-2 py-1">
+                                <p className="font-semibold">
+                                  {reply.author_role === "teacher" ? "老师" : "我"} ·{" "}
+                                  {new Date(reply.created_at).toLocaleString("zh-CN", { hour12: false })}
+                                </p>
+                                <p className="mt-1">{reply.content}</p>
+                              </li>
+                            ))
+                          )}
+                        </ul>
+                      ) : null}
+                      <div className="mt-2 flex flex-col gap-2">
+                        <textarea
+                          className="field min-h-16 text-xs"
+                          value={replyInputBySubmissionId[item.submission_id] || ""}
+                          onChange={(event) =>
+                            setReplyInputBySubmissionId((prev) => ({
+                              ...prev,
+                              [item.submission_id]: event.target.value
+                            }))
+                          }
+                          placeholder="向老师回复本次批改，例如：已按建议修改第2段。"
+                        />
+                        <button
+                          className="btn-ink w-fit px-3 py-1 text-xs"
+                          onClick={() => {
+                            void submitReply(item.submission_id);
+                          }}
+                          type="button"
+                          disabled={replyPostingSubmissionId === item.submission_id}
+                        >
+                          {replyPostingSubmissionId === item.submission_id ? "发送中..." : "发送回复"}
+                        </button>
+                      </div>
+                    </div>
                   </li>
                 ))
               )}

@@ -7,8 +7,10 @@ from sqlalchemy.orm import Session
 
 from app.api.deps.auth import require_teacher
 from app.db.deps import get_db
-from app.models import Assignment, ManualReview, Submission, User
+from app.models import Assignment, ManualReview, ManualReviewReply, Submission, User
 from app.schemas.manual_review import (
+    ManualReviewReplyCreateRequest,
+    ManualReviewReplyRead,
     ManualReviewDraftRequest,
     ManualReviewPublishRequest,
     ManualReviewRead,
@@ -59,6 +61,45 @@ def _to_manual_review_read(review: ManualReview) -> ManualReviewRead:
         updated_at=review.updated_at,
         published_at=review.published_at,
     )
+
+
+def _to_manual_review_reply_read(reply: ManualReviewReply) -> ManualReviewReplyRead:
+    return ManualReviewReplyRead(
+        reply_id=reply.id,
+        manual_review_id=reply.manual_review_id,
+        submission_id=reply.submission_id,
+        assignment_id=reply.assignment_id,
+        class_id=reply.class_id,
+        student_id=reply.student_id,
+        teacher_id=reply.teacher_id,
+        author_role=reply.author_role,  # type: ignore[arg-type]
+        author_id=reply.author_id,
+        content=reply.content,
+        created_at=reply.created_at,
+    )
+
+
+def _get_manual_review_for_submission(
+    db: Session,
+    *,
+    submission_id: str,
+    current_teacher: User,
+    require_published: bool,
+) -> ManualReview:
+    submission, _ = _get_owned_submission(db, submission_id=submission_id, current_teacher=current_teacher)
+    review = db.scalar(
+        select(ManualReview)
+        .where(
+            ManualReview.submission_id == submission.id,
+            ManualReview.teacher_id == current_teacher.id,
+        )
+        .limit(1)
+    )
+    if not review:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Manual review draft not found")
+    if require_published and review.status != "published":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Manual review is not published yet")
+    return review
 
 
 @router.get("/submission/{submission_id}", response_model=ManualReviewSubmissionResponse)
@@ -164,3 +205,54 @@ def publish_manual_review(
     db.commit()
     db.refresh(review)
     return _to_manual_review_read(review)
+
+
+@router.get("/submission/{submission_id}/replies", response_model=list[ManualReviewReplyRead])
+def list_manual_review_replies(
+    submission_id: str,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(require_teacher),
+) -> list[ManualReviewReplyRead]:
+    review = _get_manual_review_for_submission(
+        db,
+        submission_id=submission_id,
+        current_teacher=current_teacher,
+        require_published=False,
+    )
+    rows = db.scalars(
+        select(ManualReviewReply)
+        .where(ManualReviewReply.manual_review_id == review.id)
+        .order_by(ManualReviewReply.created_at.asc())
+    ).all()
+    return [_to_manual_review_reply_read(item) for item in rows]
+
+
+@router.post("/submission/{submission_id}/replies", response_model=ManualReviewReplyRead, status_code=status.HTTP_201_CREATED)
+def create_teacher_manual_review_reply(
+    submission_id: str,
+    payload: ManualReviewReplyCreateRequest,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(require_teacher),
+) -> ManualReviewReplyRead:
+    review = _get_manual_review_for_submission(
+        db,
+        submission_id=submission_id,
+        current_teacher=current_teacher,
+        require_published=True,
+    )
+    reply = ManualReviewReply(
+        id=str(uuid4()),
+        manual_review_id=review.id,
+        submission_id=review.submission_id,
+        assignment_id=review.assignment_id,
+        class_id=review.class_id,
+        student_id=review.student_id,
+        teacher_id=review.teacher_id,
+        author_role="teacher",
+        author_id=current_teacher.id,
+        content=payload.content,
+    )
+    db.add(reply)
+    db.commit()
+    db.refresh(reply)
+    return _to_manual_review_reply_read(reply)

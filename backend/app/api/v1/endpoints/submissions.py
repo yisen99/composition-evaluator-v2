@@ -15,9 +15,14 @@ from app.models import (
     ClassRoom,
     ManualFeedbackReceipt,
     ManualReview,
+    ManualReviewReply,
     Submission,
     SubmissionReview,
     User,
+)
+from app.schemas.manual_review import (
+    ManualReviewReplyRead,
+    StudentManualReviewReplyCreateRequest,
 )
 from app.schemas.submission import (
     CreateSubmissionResponse,
@@ -93,6 +98,49 @@ def _load_latest_agent_summary(db: Session, *, submission_id: str) -> StudentAge
     ]
 
     return StudentAgentSummary(total_score=total_score, radar=radar, items=items)
+
+
+def _to_manual_review_reply_read(reply: ManualReviewReply) -> ManualReviewReplyRead:
+    return ManualReviewReplyRead(
+        reply_id=reply.id,
+        manual_review_id=reply.manual_review_id,
+        submission_id=reply.submission_id,
+        assignment_id=reply.assignment_id,
+        class_id=reply.class_id,
+        student_id=reply.student_id,
+        teacher_id=reply.teacher_id,
+        author_role=reply.author_role,  # type: ignore[arg-type]
+        author_id=reply.author_id,
+        content=reply.content,
+        created_at=reply.created_at,
+    )
+
+
+def _get_student_published_manual_review(
+    db: Session,
+    *,
+    submission_id: str,
+    current_student: User,
+) -> ManualReview:
+    submission = db.get(Submission, submission_id)
+    if not submission:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Submission not found")
+    if submission.student_id != current_student.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Student does not own this submission")
+
+    review = db.scalar(
+        select(ManualReview)
+        .where(
+            ManualReview.submission_id == submission.id,
+            ManualReview.student_id == current_student.id,
+        )
+        .limit(1)
+    )
+    if not review:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Manual review draft not found")
+    if review.status != "published":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Manual review is not published yet")
+    return review
 
 
 async def _validate_file_before_storage(content_type: SubmissionContentType, file: UploadFile) -> None:
@@ -253,6 +301,50 @@ def mark_my_manual_feedback_read(
 
     db.commit()
     return MarkManualFeedbackReadResponse(marked_count=len(review_by_submission))
+
+
+@router.get("/me/manual-feedback/replies", response_model=list[ManualReviewReplyRead])
+def list_my_manual_feedback_replies(
+    submission_id: str,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(require_student),
+) -> list[ManualReviewReplyRead]:
+    review = _get_student_published_manual_review(db, submission_id=submission_id, current_student=current_student)
+    rows = db.scalars(
+        select(ManualReviewReply)
+        .where(ManualReviewReply.manual_review_id == review.id)
+        .order_by(ManualReviewReply.created_at.asc())
+    ).all()
+    return [_to_manual_review_reply_read(item) for item in rows]
+
+
+@router.post("/me/manual-feedback/replies", response_model=ManualReviewReplyRead, status_code=status.HTTP_201_CREATED)
+def create_my_manual_feedback_reply(
+    payload: StudentManualReviewReplyCreateRequest,
+    db: Session = Depends(get_db),
+    current_student: User = Depends(require_student),
+) -> ManualReviewReplyRead:
+    review = _get_student_published_manual_review(
+        db,
+        submission_id=payload.submission_id,
+        current_student=current_student,
+    )
+    reply = ManualReviewReply(
+        id=str(uuid4()),
+        manual_review_id=review.id,
+        submission_id=review.submission_id,
+        assignment_id=review.assignment_id,
+        class_id=review.class_id,
+        student_id=review.student_id,
+        teacher_id=review.teacher_id,
+        author_role="student",
+        author_id=current_student.id,
+        content=payload.content,
+    )
+    db.add(reply)
+    db.commit()
+    db.refresh(reply)
+    return _to_manual_review_reply_read(reply)
 
 
 @router.post("", response_model=CreateSubmissionResponse, status_code=status.HTTP_201_CREATED)

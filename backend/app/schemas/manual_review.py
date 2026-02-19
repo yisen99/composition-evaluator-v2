@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 ManualReviewStatus = Literal["draft", "published"]
 ManualReviewQueueStatus = Literal["none", "draft", "published"]
+ManualReviewReplyAuthorRole = Literal["teacher", "student"]
 
 
 class ManualReviewDraftRequest(BaseModel):
@@ -45,6 +46,36 @@ class ManualReviewDraftRequest(BaseModel):
 
 class ManualReviewPublishRequest(BaseModel):
     submission_id: str
+
+
+class ManualReviewReplyCreateRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=3000)
+
+    @field_validator("content")
+    @classmethod
+    def _normalize_content(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("content must not be empty")
+        return normalized
+
+
+class StudentManualReviewReplyCreateRequest(ManualReviewReplyCreateRequest):
+    submission_id: str
+
+
+class ManualReviewReplyRead(BaseModel):
+    reply_id: str
+    manual_review_id: str
+    submission_id: str
+    assignment_id: str
+    class_id: str
+    student_id: str
+    teacher_id: str
+    author_role: ManualReviewReplyAuthorRole
+    author_id: str
+    content: str
+    created_at: datetime
 
 
 class ManualReviewRead(BaseModel):
