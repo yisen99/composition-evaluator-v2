@@ -1,0 +1,5 @@
+{
+  "name": "语文作文批改协同台",
+  "description": "面向中小学语文教学的作文批改与协同平台，支持AI辅助批改、批量任务管理及学生成长追踪。",
+  "requestFramePermissions": []
+}
