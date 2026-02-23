@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # macOS
 .DS_Store
 
@@ -28,3 +29,13 @@ backend/storage/uploads/
 # IDE
 .vscode/
 .idea/
+=======
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+>>>>>>> ffacc7a2805e24f19272c1774b3a46855ac4c104

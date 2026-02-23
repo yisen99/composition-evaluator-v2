@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Composition Evaluator
 
 一个独立的语文作文批改网站骨架项目，采用前后端分离架构：
@@ -76,3 +77,25 @@ make db-verify-rollback  # 升级->回滚->再升级 的完整验证
 - `CASDOOR_CLIENT_SECRET`
 - `CASDOOR_REDIRECT_URI`（建议配置为前端回调页 `http://127.0.0.1:3000/login/wechat/callback`）
 - 可选：`CASDOOR_SCOPE`、`CASDOOR_AUTHORIZE_PATH`、`CASDOOR_TOKEN_PATH`、`CASDOOR_USERINFO_PATH`
+=======
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
+
+# Run and deploy your AI Studio app
+
+This contains everything you need to run your app locally.
+
+View your app in AI Studio: https://ai.studio/apps/4e1d1a33-4c8b-487b-8ec9-5ff1390659eb
+
+## Run Locally
+
+**Prerequisites:**  Node.js
+
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`
+>>>>>>> ffacc7a2805e24f19272c1774b3a46855ac4c104
