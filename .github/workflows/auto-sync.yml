@@ -1,0 +1,63 @@
+name: Auto Sync to GitHub Private Repository
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "Claude Code Bot"
+          git config --global user.email "claude-bot@composition-evaluator.local"
+
+      - name: Show Git Status
+        run: |
+          echo "=== Current Branch ==="
+          git branch --show-current
+          echo ""
+          echo "=== Remote Info ==="
+          git remote -v
+          echo ""
+          echo "=== Last Commit ==="
+          git log -1 --oneline
+          echo ""
+          echo "=== Uncommitted Changes ==="
+          git status --short
+
+      - name: Sync to GitHub
+        run: |
+          # Push to GitHub with force flag to ensure sync
+          git push origin $(git branch --show-current) --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify on Success
+        if: success()
+        run: |
+          echo "✅ Successfully synced to GitHub!"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: $(git branch --show-current)"
+          echo "Commit: $(git log -1 --oneline)"
+
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "❌ Failed to sync to GitHub!"
+          echo "Please check the logs above for details."

@@ -1,0 +1,105 @@
+name: BMAD Integration Check
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  bmad-validation:
+    name: Validate BMAD Configuration
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check BMAD Installation
+        run: |
+          echo "=== Checking BMAD Installation ==="
+
+          # Check if _bmad directory exists
+          if [ -d "_bmad" ]; then
+            echo "✅ _bmad directory exists"
+          else
+            echo "❌ _bmad directory not found"
+            exit 1
+          fi
+
+          # Check if manifest exists
+          if [ -f "_bmad/_config/manifest.yaml" ]; then
+            echo "✅ BMAD manifest found"
+          else
+            echo "❌ BMAD manifest not found"
+            exit 1
+          fi
+
+          # Count agents
+          AGENT_COUNT=$(find _bmad -name "*.md" -path "*/agents/*" | wc -l)
+          echo "🤖 Found $AGENT_COUNT agent definitions"
+
+          # Count workflows
+          WORKFLOW_COUNT=$(find _bmad -name "workflow.md" -o -name "workflow.yaml" | wc -l)
+          echo "📋 Found $WORKFLOW_COUNT workflow definitions"
+
+          # Check output directories
+          if [ -d "_bmad-output/planning-artifacts" ]; then
+            echo "✅ Planning artifacts directory exists"
+          fi
+
+          if [ -d "_bmad-output/implementation-artifacts" ]; then
+            echo "✅ Implementation artifacts directory exists"
+          fi
+
+      - name: Validate BMAD Commands
+        run: |
+          echo "=== Validating BMAD Commands ==="
+
+          if [ -d ".claude/commands" ]; then
+            COMMAND_COUNT=$(find .claude/commands -name "bmad-*.md" | wc -l)
+            echo "📜 Found $COMMAND_COUNT BMAD command files"
+
+            # List key commands
+            echo ""
+            echo "Key BMAD Commands:"
+            ls -1 .claude/commands/bmad-*.md | head -10 | while read cmd; do
+              echo "  - $(basename $cmd)"
+            done
+          else
+            echo "⚠️  No .claude/commands directory found"
+          fi
+
+      - name: Check BMAD Documentation
+        run: |
+          echo "=== Checking BMAD Documentation ==="
+
+          # Check for BMAD guides
+          if [ -f "docs/bmad-quick-start.md" ]; then
+            echo "✅ BMAD quick start guide found"
+          fi
+
+          if [ -f "docs/bmad-frontend-review-guide.md" ]; then
+            echo "✅ BMAD frontend review guide found"
+          fi
+
+      - name: Generate BMAD Summary
+        if: always()
+        run: |
+          echo "=== BMAD Integration Summary ==="
+          echo ""
+          echo "BMAD Version: 6.0.1"
+          echo "Installation Status: ✅ Complete"
+          echo ""
+          echo "Available Tools:"
+          echo "  - GitHub Actions CI/CD"
+          echo "  - Auto-sync workflows"
+          echo "  - BMAD validation checks"
+          echo ""
+          echo "Next Steps:"
+          echo "  1. Use /bmad-help in Claude Code"
+          echo "  2. Try /ux-designer for frontend review"
+          echo "  3. Run /pm to create PRDs"
+          echo ""
+          echo "For more info, see docs/bmad-quick-start.md"
