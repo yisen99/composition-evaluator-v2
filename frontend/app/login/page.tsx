@@ -35,19 +35,19 @@ export default function LoginEntryPage({ searchParams }: LoginEntryPageProps) {
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="paper-card p-6">
-              <p className="label">Teacher Path</p>
+              <p className="label">老师入口</p>
               <h2 className="mt-2 text-3xl font-semibold">我是老师</h2>
               <div className="mt-3 space-y-2 text-sm text-slate-700">
                 <p>1. 使用邮箱密码注册/登录</p>
-                <p>2. 进入教师工作台建班与发布任务</p>
-                <p>3. 在任务详情页进行批改与查看记忆</p>
+                <p>2. 默认进入任务中心，按优先级处理待办</p>
+                <p>3. 在任务详情页批改，必要时再去班级与发布页建班出题</p>
               </div>
               <a className="btn-ink mt-4 inline-block text-sm" href={teacherLoginPath}>
                 进入老师登录
               </a>
             </div>
             <div className="paper-card p-6">
-              <p className="label">Student Path</p>
+              <p className="label">学生入口</p>
               <h2 className="mt-2 text-3xl font-semibold">我是学生</h2>
               <div className="mt-3 space-y-2 text-sm text-slate-700">
                 <p>1. 使用账号密码或短信快捷登录</p>
@@ -62,23 +62,17 @@ export default function LoginEntryPage({ searchParams }: LoginEntryPageProps) {
 
           <div className="paper-card p-5">
             <p className="label">常见问题</p>
-            <div className="mt-3 space-y-2 text-sm text-slate-700">
-              <p>Q: 我是老师，能用短信登录吗？</p>
-              <p>A: 老师请使用邮箱密码登录；短信快捷登录仅用于学生路径。</p>
-              <p>Q: 不确定选哪一个入口怎么办？</p>
-              <p>A: 按当前实际身份选择；进入后会按权限自动限制页面操作。</p>
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                <p>Q: 我是老师，能用短信登录吗？</p>
+                <p>A: 可以，但仅限已绑定手机号的老师账号；首次仍建议使用邮箱密码登录。</p>
+                <p>Q: 不确定选哪一个入口怎么办？</p>
+                <p>A: 按当前实际身份选择；进入后会按权限自动限制页面操作。</p>
+              </div>
             </div>
-          </div>
 
           <div className="flex flex-wrap gap-4">
             <a className="text-sm text-slate-700 underline" href="/">
               返回首页
-            </a>
-            <a className="text-sm text-slate-700 underline" href="/teacher">
-              已登录老师，直达教师工作台
-            </a>
-            <a className="text-sm text-slate-700 underline" href="/student">
-              已登录学生，直达学生工作台
             </a>
           </div>
         </div>

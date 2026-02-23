@@ -16,7 +16,7 @@ describe("auth redirect helpers", () => {
 
   it("resolves role-aware redirect with fallback", () => {
     expect(resolveRoleAwareRedirectPath("teacher", "/teacher/assignments/1")).toBe("/teacher/assignments/1");
-    expect(resolveRoleAwareRedirectPath("teacher", "/student")).toBe("/teacher");
+    expect(resolveRoleAwareRedirectPath("teacher", "/student")).toBe("/teacher/tasks");
     expect(resolveRoleAwareRedirectPath("student", "/teacher")).toBe("/student");
     expect(resolveRoleAwareRedirectPath("student", null)).toBe("/student");
   });
@@ -29,7 +29,7 @@ describe("auth redirect helpers", () => {
   });
 
   it("returns default workspace by role", () => {
-    expect(defaultWorkspaceByRole("teacher")).toBe("/teacher");
+    expect(defaultWorkspaceByRole("teacher")).toBe("/teacher/tasks");
     expect(defaultWorkspaceByRole("student")).toBe("/student");
   });
 });

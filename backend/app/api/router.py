@@ -7,6 +7,7 @@ from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.classes import router as classes_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.endpoints.manual_reviews import router as manual_reviews_router
+from app.api.v1.endpoints.observability import router as observability_router
 from app.api.v1.endpoints.reviews import router as reviews_router
 from app.api.v1.endpoints.students import router as students_router
 from app.api.v1.endpoints.submissions import router as submissions_router
@@ -37,3 +38,4 @@ api_router.include_router(submissions_router, prefix="/submissions", tags=["subm
 api_router.include_router(manual_reviews_router, prefix="/manual-reviews", tags=["manual-reviews"])
 api_router.include_router(reviews_router, prefix="/reviews", tags=["reviews"])
 api_router.include_router(students_router, prefix="/students", tags=["students"])
+api_router.include_router(observability_router, prefix="/observability", tags=["observability"])

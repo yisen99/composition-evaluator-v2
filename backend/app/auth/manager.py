@@ -1,13 +1,22 @@
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
+import redis.asyncio as redis
 from fastapi import Depends, Request
 from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, exceptions
-from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
+from fastapi_users.authentication import (
+    AuthenticationBackend,
+    BearerTransport,
+    JWTStrategy,
+    RedisStrategy,
+    Strategy,
+)
+from fastapi_users.authentication.strategy.jwt import JWTStrategyDestroyNotSupportedError
 from fastapi_users.db import SQLAlchemyUserDatabase
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.deps import get_async_db
@@ -73,14 +82,83 @@ async def get_user_manager(user_db=Depends(get_auth_user_db)):
 bearer_transport = BearerTransport(tokenUrl="api/v1/auth/jwt/login")
 
 
-def get_jwt_strategy() -> JWTStrategy:
-    return JWTStrategy(secret=settings.jwt_secret, lifetime_seconds=settings.access_token_expire_minutes * 60)
+TokenStrategyName = Literal["jwt", "redis"]
+_redis_client: redis.Redis | None = None
+
+
+def _resolve_strategy_name() -> TokenStrategyName:
+    return "redis" if settings.auth_token_strategy == "redis" else "jwt"
+
+
+def _get_redis_client() -> redis.Redis:
+    global _redis_client  # noqa: PLW0603
+    if _redis_client is None:
+        _redis_client = redis.from_url(settings.redis_url)
+    return _redis_client
+
+
+def get_access_token_strategy() -> Strategy[AuthAccount, uuid.UUID]:
+    if _resolve_strategy_name() == "redis":
+        return RedisStrategy(
+            redis=_get_redis_client(),
+            lifetime_seconds=settings.access_token_expire_minutes * 60,
+            key_prefix="ce:auth:access:",
+        )
+    return JWTStrategy(
+        secret=settings.jwt_secret,
+        lifetime_seconds=settings.access_token_expire_minutes * 60,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+def get_refresh_token_strategy() -> Strategy[AuthAccount, uuid.UUID]:
+    if _resolve_strategy_name() == "redis":
+        return RedisStrategy(
+            redis=_get_redis_client(),
+            lifetime_seconds=settings.refresh_token_expire_minutes * 60,
+            key_prefix="ce:auth:refresh:",
+        )
+    return JWTStrategy(
+        secret=settings.jwt_secret,
+        lifetime_seconds=settings.refresh_token_expire_minutes * 60,
+        algorithm=settings.jwt_algorithm,
+    )
+
+
+async def issue_access_token(user: AuthAccount) -> str:
+    strategy = get_access_token_strategy()
+    return await strategy.write_token(user)
+
+
+async def issue_refresh_token(user: AuthAccount) -> str:
+    strategy = get_refresh_token_strategy()
+    return await strategy.write_token(user)
+
+
+async def read_refresh_token(
+    refresh_token: str,
+    user_manager: AuthAccountManager,
+) -> AuthAccount | None:
+    strategy = get_refresh_token_strategy()
+    return await strategy.read_token(refresh_token, user_manager)
+
+
+async def revoke_refresh_token(
+    refresh_token: str,
+    user: AuthAccount,
+) -> None:
+    strategy = get_refresh_token_strategy()
+    try:
+        await strategy.destroy_token(refresh_token, user)
+    except JWTStrategyDestroyNotSupportedError:
+        # JWT strategy is stateless and cannot revoke a single token.
+        return
 
 
 auth_backend = AuthenticationBackend(
     name="jwt",
     transport=bearer_transport,
-    get_strategy=get_jwt_strategy,
+    get_strategy=get_access_token_strategy,
 )
 
 fastapi_users = FastAPIUsers[AuthAccount, uuid.UUID](get_user_manager, [auth_backend])
@@ -119,7 +197,7 @@ def _is_account_phone_taken(phone: str) -> bool:
         db.close()
 
 
-def _domain_phone_or_none(db, phone: str | None, domain_user_id: str) -> str | None:
+def _domain_phone_or_none(db: Session, phone: str | None, domain_user_id: str) -> str | None:
     if not phone:
         return None
     conflict = db.scalar(
@@ -133,10 +211,11 @@ def _domain_phone_or_none(db, phone: str | None, domain_user_id: str) -> str | N
     return None if conflict else phone
 
 
-def _upsert_domain_user_from_account(db, user: AuthAccount) -> None:
+def _upsert_domain_user_from_account(db: Session, user: AuthAccount) -> User:
     normalized_phone = _safe_normalize_phone(user.phone)
     domain_user = db.get(User, str(user.id))
     mapped_phone = _domain_phone_or_none(db, normalized_phone, domain_user_id=str(user.id))
+    changed = False
     if not domain_user:
         domain_user = User(
             id=str(user.id),
@@ -145,26 +224,42 @@ def _upsert_domain_user_from_account(db, user: AuthAccount) -> None:
             display_name=user.display_name,
         )
         db.add(domain_user)
+        changed = True
     else:
-        domain_user.role = user.role
-        domain_user.phone = mapped_phone
-        domain_user.display_name = user.display_name
-    try:
-        db.commit()
-    except IntegrityError:
-        db.rollback()
-        # Keep auth flow available; drop conflicting phone link in domain profile.
-        domain_user = db.get(User, str(user.id))
-        if not domain_user:
-            domain_user = User(
-                id=str(user.id),
-                role=user.role,
-                phone=None,
-                display_name=user.display_name,
-            )
-            db.add(domain_user)
-        else:
-            domain_user.phone = None
+        if domain_user.role != user.role:
             domain_user.role = user.role
+            changed = True
+        if domain_user.phone != mapped_phone:
+            domain_user.phone = mapped_phone
+            changed = True
+        if domain_user.display_name != user.display_name:
             domain_user.display_name = user.display_name
-        db.commit()
+            changed = True
+
+    if changed:
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            # Keep auth flow available; drop conflicting phone link in domain profile.
+            domain_user = db.get(User, str(user.id))
+            if not domain_user:
+                domain_user = User(
+                    id=str(user.id),
+                    role=user.role,
+                    phone=None,
+                    display_name=user.display_name,
+                )
+                db.add(domain_user)
+            else:
+                domain_user.phone = None
+                domain_user.role = user.role
+                domain_user.display_name = user.display_name
+            db.commit()
+        db.refresh(domain_user)
+
+    return domain_user
+
+
+def sync_domain_user_from_account(db: Session, user: AuthAccount) -> User:
+    return _upsert_domain_user_from_account(db, user)

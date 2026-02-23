@@ -10,10 +10,18 @@ import {
   listMyManualFeedback,
   listMySubmissions
 } from "@/lib/api/client";
-import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
+import { trackUxEventSafe } from "@/lib/analytics/tracker";
+import { getAuthSession } from "@/lib/auth/session";
 import { buildAssignmentSubmissionGuard } from "@/lib/submission/assignment-guard";
 import { validateSubmissionDraft } from "@/lib/submission/validation";
-import type { AssignmentListItem, ClassListItem, StudentSubmissionListItem, SubmissionContentType, UserProfile } from "@/lib/api/types";
+import type {
+  AssignmentListItem,
+  ClassListItem,
+  StudentManualFeedbackItem,
+  StudentSubmissionListItem,
+  SubmissionContentType,
+  UserProfile
+} from "@/lib/api/types";
 
 type Toast = {
   type: "ok" | "error";
@@ -28,6 +36,7 @@ export default function StudentPage() {
   const [classroomList, setClassroomList] = useState<ClassListItem[]>([]);
   const [assignmentList, setAssignmentList] = useState<AssignmentListItem[]>([]);
   const [submissionList, setSubmissionList] = useState<StudentSubmissionListItem[]>([]);
+  const [manualFeedbackList, setManualFeedbackList] = useState<StudentManualFeedbackItem[]>([]);
   const [unreadTeacherReplyCount, setUnreadTeacherReplyCount] = useState(0);
   const [selectedClassId, setSelectedClassId] = useState("");
   const [selectedAssignmentId, setSelectedAssignmentId] = useState("");
@@ -55,10 +64,22 @@ export default function StudentPage() {
       setClassroomList(loadedClasses);
       setAssignmentList(loadedAssignments);
       setSubmissionList(loadedSubmissions);
+      setManualFeedbackList(loadedManualFeedback);
       setUnreadTeacherReplyCount(
         loadedManualFeedback.reduce((sum, item) => sum + (item.unread_teacher_reply_count || 0), 0)
       );
       setSelectedClassId((prev) => prev || loadedClasses[0]?.class_id || "");
+      trackUxEventSafe({
+        event_name: "student_workspace_view",
+        event_category: "page_view",
+        page: "/student",
+        properties: {
+          class_count: loadedClasses.length,
+          assignment_count: loadedAssignments.length,
+          submission_count: loadedSubmissions.length,
+          unread_reply_count: loadedManualFeedback.reduce((sum, item) => sum + (item.unread_teacher_reply_count || 0), 0)
+        }
+      });
     } catch (error) {
       setToast({ type: "error", message: `数据加载失败：${(error as Error).message}` });
     } finally {
@@ -101,6 +122,38 @@ export default function StudentPage() {
     () => classroomList.find((item) => item.class_id === selectedClassId)?.name ?? "未选择",
     [classroomList, selectedClassId]
   );
+
+  const submissionAssignmentIdSet = useMemo(
+    () => new Set(submissionList.map((item) => item.assignment_id)),
+    [submissionList]
+  );
+  const pendingSubmissionAssignments = useMemo(
+    () =>
+      assignmentList.filter((item) => {
+        const guard = buildAssignmentSubmissionGuard(item);
+        return guard.allowed && !submissionAssignmentIdSet.has(item.assignment_id);
+      }),
+    [assignmentList, submissionAssignmentIdSet]
+  );
+  const unreadFeedbackItems = useMemo(
+    () => manualFeedbackList.filter((item) => (item.unread_teacher_reply_count || 0) > 0),
+    [manualFeedbackList]
+  );
+
+  const jumpToAssignmentSubmit = (assignment: AssignmentListItem) => {
+    setSelectedClassId(assignment.class_id);
+    setSelectedAssignmentId(assignment.assignment_id);
+    trackUxEventSafe({
+      event_name: "student_todo_card_click",
+      event_category: "action",
+      page: "/student",
+      properties: {
+        todo_type: "pending_submission",
+        assignment_id: assignment.assignment_id
+      }
+    });
+    document.getElementById("submit-composition")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const onJoinClass = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -161,7 +214,7 @@ export default function StudentPage() {
     setToast(null);
     try {
       const submitted = await createCompositionSubmission(payload);
-      setToast({ type: "ok", message: `提交成功，提交ID：${submitted.submission_id}` });
+      setToast({ type: "ok", message: `提交成功，提交编号：${submitted.submission_id}` });
       setUploadFile(null);
       await hydrateWorkspace();
     } catch (error) {
@@ -203,30 +256,132 @@ export default function StudentPage() {
               <span>
                 {currentUser.display_name} · {currentUser.phone}
               </span>
-              <button
-                className="underline"
-                onClick={() => {
-                  clearAuthSession();
-                  window.location.href = "/login/student";
-                }}
-                type="button"
-              >
-                退出登录
-              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="paper-card p-4">
+              <p className="label">已加入班级</p>
+              <p className="mt-2 text-2xl font-semibold">{classroomList.length}</p>
+            </div>
+            <div className="paper-card p-4">
+              <p className="label">可见任务</p>
+              <p className="mt-2 text-2xl font-semibold">{visibleAssignments.length}</p>
+            </div>
+            <div className="paper-card p-4">
+              <p className="label">历史提交</p>
+              <p className="mt-2 text-2xl font-semibold">{submissionList.length}</p>
+            </div>
+            <div className="paper-card p-4">
+              <p className="label">老师新回复</p>
+              <p className="mt-2 text-2xl font-semibold">{unreadTeacherReplyCount}</p>
+            </div>
+          </div>
+
+          <div className="paper-card p-4">
+            <p className="label">待办优先（先做最重要的）</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              <div className="rounded-lg border border-amber-700/35 bg-amber-50/80 p-3">
+                <p className="text-xs font-semibold text-amber-900">待提交任务</p>
+                <p className="mt-1 text-2xl font-semibold text-amber-950">{pendingSubmissionAssignments.length}</p>
+                <p className="mt-1 text-xs text-amber-900">
+                  {pendingSubmissionAssignments.length > 0 ? "建议先提交最近截止任务。" : "当前暂无待提交任务。"}
+                </p>
+                {pendingSubmissionAssignments.length > 0 ? (
+                  <button
+                    className="btn-seal mt-2 px-3 py-1 text-xs"
+                    onClick={() => jumpToAssignmentSubmit(pendingSubmissionAssignments[0])}
+                    type="button"
+                  >
+                    一键去提交
+                  </button>
+                ) : null}
+              </div>
+              <div className="rounded-lg border border-rose-700/35 bg-rose-50/80 p-3">
+                <p className="text-xs font-semibold text-rose-900">未读反馈</p>
+                <p className="mt-1 text-2xl font-semibold text-rose-950">{unreadTeacherReplyCount}</p>
+                <p className="mt-1 text-xs text-rose-900">进入反馈页，优先查看老师刚发布的内容。</p>
+                <Link
+                  className="btn-ink mt-2 inline-block px-3 py-1 text-xs"
+                  href="/student/feedback"
+                  onClick={() =>
+                    trackUxEventSafe({
+                      event_name: "student_todo_card_click",
+                      event_category: "action",
+                      page: "/student",
+                      properties: { todo_type: "unread_feedback" }
+                    })
+                  }
+                >
+                  去看反馈
+                </Link>
+              </div>
+              <div className="rounded-lg border border-emerald-700/35 bg-emerald-50/80 p-3">
+                <p className="text-xs font-semibold text-emerald-900">待回复老师</p>
+                <p className="mt-1 text-2xl font-semibold text-emerald-950">{unreadFeedbackItems.length}</p>
+                <p className="mt-1 text-xs text-emerald-900">收到新回复后，建议当天完成追问或确认。</p>
+                <Link
+                  className="btn-seal mt-2 inline-block px-3 py-1 text-xs"
+                  href="/student/feedback"
+                  onClick={() =>
+                    trackUxEventSafe({
+                      event_name: "student_todo_card_click",
+                      event_category: "action",
+                      page: "/student",
+                      properties: { todo_type: "pending_reply" }
+                    })
+                  }
+                >
+                  去回复老师
+                </Link>
+              </div>
+            </div>
+            {pendingSubmissionAssignments.length > 0 ? (
+              <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-slate-700">
+                {pendingSubmissionAssignments.slice(0, 3).map((item) => (
+                  <li key={item.assignment_id}>
+                    {item.title}
+                    {item.due_at
+                      ? `（截止 ${new Date(item.due_at).toLocaleString("zh-CN", { hour12: false })}）`
+                      : "（未设置截止时间）"}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+
+          <div className="paper-card p-4">
+            <p className="label">快捷导航</p>
+            <div className="mt-2 flex flex-wrap gap-2 text-sm">
+              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#join-class">
+                加入班级
+              </a>
+              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#submit-composition">
+                提交作文
+              </a>
+              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#visible-tasks">
+                查看任务
+              </a>
+              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#my-submissions">
+                查看提交
+              </a>
+              <Link className="rounded-full border border-emerald-700/35 bg-emerald-50 px-3 py-1" href="/student/feedback">
+                去看批改反馈{unreadTeacherReplyCount > 0 ? ` (${unreadTeacherReplyCount})` : ""}
+              </Link>
             </div>
           </div>
 
           <div className="grid gap-5 lg:grid-cols-2">
-            <form className="paper-card space-y-4 p-5" onSubmit={onJoinClass}>
+            <form className="paper-card space-y-4 p-5" id="join-class" onSubmit={onJoinClass}>
               <h1 className="poster-title text-3xl font-bold">1) 输入班级码加入课堂</h1>
 
               <div>
-                <p className="label">Student Name</p>
+                <p className="label">学生姓名</p>
                 <input className="field mt-1" value={studentName} onChange={(event) => setStudentName(event.target.value)} />
               </div>
 
               <div>
-                <p className="label">Join Code</p>
+                <p className="label">班级码</p>
                 <input
                   className="field mt-1 uppercase tracking-[0.2em]"
                   value={joinCode}
@@ -240,7 +395,7 @@ export default function StudentPage() {
               </button>
             </form>
 
-            <form className="paper-card space-y-4 p-5" onSubmit={onSubmitComposition}>
+            <form className="paper-card space-y-4 p-5" id="submit-composition" onSubmit={onSubmitComposition}>
               <h2 className="poster-title text-3xl font-bold">2) 提交作文</h2>
 
               <div>
@@ -335,7 +490,7 @@ export default function StudentPage() {
 
           {result ? (
             <div className="rounded-xl border border-emerald-700/35 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-              加入成功：{result.class_name}（Class ID: {result.class_id}）
+              加入成功：{result.class_name}（班级编号：{result.class_id}）
             </div>
           ) : null}
 
@@ -354,7 +509,7 @@ export default function StudentPage() {
           {busy === "loading" ? <p className="text-sm text-slate-700">正在同步班级与任务列表...</p> : null}
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="paper-card p-4">
+            <div className="paper-card p-4" id="joined-classes">
               <p className="label">已加入班级</p>
               <ul className="mt-2 space-y-2 text-sm">
                 {classroomList.length === 0 ? (
@@ -364,13 +519,13 @@ export default function StudentPage() {
                     <li key={room.class_id} className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-2">
                       <p className="font-semibold">{room.name}</p>
                       <p className="text-xs text-slate-700">学段：{room.grade_band === "primary" ? "小学" : "初中"}</p>
-                      <p className="text-xs text-slate-700">Class ID: {room.class_id}</p>
+                      <p className="text-xs text-slate-700">班级编号：{room.class_id}</p>
                     </li>
                   ))
                 )}
               </ul>
             </div>
-            <div className="paper-card p-4">
+            <div className="paper-card p-4" id="visible-tasks">
               <p className="label">当前班级任务</p>
               <div className="mt-2 space-y-2 text-sm">
                 <p>当前选中班级：{selectedClassName}</p>
@@ -398,7 +553,7 @@ export default function StudentPage() {
                 </ul>
               </div>
             </div>
-            <div className="paper-card p-4">
+            <div className="paper-card p-4" id="my-submissions">
               <p className="label">我的最近提交</p>
               <ul className="mt-2 space-y-2 text-sm">
                 {submissionList.length === 0 ? (

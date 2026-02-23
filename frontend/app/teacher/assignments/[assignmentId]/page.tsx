@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   createManualReviewReplyForTeacher,
   getAssignmentCommunicationThreads,
@@ -16,6 +16,7 @@ import {
   runSubmissionReview,
   saveManualReviewDraft,
 } from "@/lib/api/client";
+import { executeBatchWithProgress } from "@/lib/review/batch-runner";
 import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
 import type {
   AssignmentGradingQueueItem,
@@ -39,6 +40,8 @@ type ManualDraftForm = {
   strengths: string;
   nextGoal: string;
 };
+
+type BatchActionKind = "review" | "summary" | "publish";
 
 function emptyManualDraftForm(): ManualDraftForm {
   return {
@@ -64,7 +67,30 @@ function applyManualReviewToForm(review: ManualReviewItem): ManualDraftForm {
   };
 }
 
+function batchActionLabel(action: BatchActionKind): string {
+  if (action === "review") {
+    return "Agent 批改";
+  }
+  if (action === "summary") {
+    return "生成汇总";
+  }
+  return "发布手工批改";
+}
+
+function parseBatchAssignmentIds(raw: string | null): string[] {
+  if (!raw) {
+    return [];
+  }
+  const items = raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return Array.from(new Set(items));
+}
+
 export default function TeacherAssignmentDetailPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const params = useParams<{ assignmentId: string }>();
   const assignmentId = useMemo(() => {
     const value = params?.assignmentId;
@@ -72,7 +98,17 @@ export default function TeacherAssignmentDetailPage() {
   }, [params?.assignmentId]);
   const loginPath = assignmentId
     ? `/login/teacher?next=${encodeURIComponent(`/teacher/assignments/${assignmentId}`)}`
-    : "/login/teacher?next=%2Fteacher";
+    : "/login/teacher?next=%2Fteacher%2Ftasks";
+  const workflowAssignmentIds = useMemo(
+    () => parseBatchAssignmentIds(searchParams.get("batch_ids")),
+    [searchParams]
+  );
+  const workflowIndex = useMemo(() => {
+    if (!assignmentId || workflowAssignmentIds.length === 0) {
+      return -1;
+    }
+    return workflowAssignmentIds.indexOf(assignmentId);
+  }, [assignmentId, workflowAssignmentIds]);
 
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [detail, setDetail] = useState<AssignmentDetailResponse | null>(null);
@@ -99,6 +135,21 @@ export default function TeacherAssignmentDetailPage() {
   const [replySubmittingSubmissionId, setReplySubmittingSubmissionId] = useState("");
   const [showOnlyPendingReplies, setShowOnlyPendingReplies] = useState(false);
   const [communicationItems, setCommunicationItems] = useState<AssignmentCommunicationStudentItem[]>([]);
+  const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<string[]>([]);
+  const [batchAgentName, setBatchAgentName] = useState<ReviewAgentName>("value");
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchAction, setBatchAction] = useState<BatchActionKind | null>(null);
+  const [batchTotal, setBatchTotal] = useState(0);
+  const [batchCompleted, setBatchCompleted] = useState(0);
+  const [batchSucceeded, setBatchSucceeded] = useState(0);
+  const [batchFailed, setBatchFailed] = useState(0);
+  const [batchCurrentSubmissionId, setBatchCurrentSubmissionId] = useState<string | null>(null);
+  const [batchFailedIds, setBatchFailedIds] = useState<string[]>([]);
+  const [batchFailureMessages, setBatchFailureMessages] = useState<Record<string, string>>({});
+  const [batchRetryContext, setBatchRetryContext] = useState<{ action: BatchActionKind; agentName: ReviewAgentName } | null>(null);
+  const [batchCancelRequested, setBatchCancelRequested] = useState(false);
+  const [batchWasCancelled, setBatchWasCancelled] = useState(false);
+  const batchCancelRef = useRef({ cancelled: false });
 
   useEffect(() => {
     const session = getAuthSession();
@@ -378,6 +429,200 @@ export default function TeacherAssignmentDetailPage() {
     [queueBySubmissionId]
   );
 
+  const submissionNameById = useMemo(
+    () =>
+      Object.fromEntries(
+        (detail?.submissions || []).map((item) => [item.submission_id, item.student_name])
+      ) as Record<string, string>,
+    [detail?.submissions]
+  );
+
+  const visibleSubmissionIds = useMemo(
+    () => visibleSubmissions.map((item) => item.submission_id),
+    [visibleSubmissions]
+  );
+
+  const allVisibleSelected = useMemo(
+    () =>
+      visibleSubmissionIds.length > 0 &&
+      visibleSubmissionIds.every((submissionId) => selectedSubmissionIds.includes(submissionId)),
+    [selectedSubmissionIds, visibleSubmissionIds]
+  );
+
+  const selectedVisibleCount = useMemo(
+    () => visibleSubmissionIds.filter((submissionId) => selectedSubmissionIds.includes(submissionId)).length,
+    [selectedSubmissionIds, visibleSubmissionIds]
+  );
+
+  useEffect(() => {
+    const validSet = new Set((detail?.submissions || []).map((item) => item.submission_id));
+    setSelectedSubmissionIds((prev) => prev.filter((submissionId) => validSet.has(submissionId)));
+  }, [detail?.submissions]);
+
+  const toggleSelectSubmission = (submissionId: string) => {
+    setSelectedSubmissionIds((prev) =>
+      prev.includes(submissionId)
+        ? prev.filter((item) => item !== submissionId)
+        : [...prev, submissionId]
+    );
+  };
+
+  const toggleSelectVisibleSubmissions = () => {
+    if (allVisibleSelected) {
+      const visibleSet = new Set(visibleSubmissionIds);
+      setSelectedSubmissionIds((prev) => prev.filter((submissionId) => !visibleSet.has(submissionId)));
+      return;
+    }
+    setSelectedSubmissionIds((prev) => {
+      const nextSet = new Set(prev);
+      visibleSubmissionIds.forEach((submissionId) => nextSet.add(submissionId));
+      return Array.from(nextSet);
+    });
+  };
+
+  const executeBatchAction = async (
+    action: BatchActionKind,
+    targetSubmissionIds: string[],
+    retryAgentName?: ReviewAgentName
+  ) => {
+    if (batchRunning) {
+      return;
+    }
+
+    const deduplicated = Array.from(new Set(targetSubmissionIds));
+    const rankedOrder = rankedSubmissions.map((item) => item.submission_id);
+    const rankedSet = new Set(rankedOrder);
+    const orderedSubmissionIds = [
+      ...rankedOrder.filter((submissionId) => deduplicated.includes(submissionId)),
+      ...deduplicated.filter((submissionId) => !rankedSet.has(submissionId))
+    ];
+
+    if (orderedSubmissionIds.length === 0) {
+      setToast({ type: "error", message: "请先选择至少 1 篇学生提交。" });
+      return;
+    }
+
+    const effectiveAgentName = retryAgentName ?? batchAgentName;
+    batchCancelRef.current.cancelled = false;
+    setBatchRunning(true);
+    setBatchAction(action);
+    setBatchTotal(orderedSubmissionIds.length);
+    setBatchCompleted(0);
+    setBatchSucceeded(0);
+    setBatchFailed(0);
+    setBatchCurrentSubmissionId(null);
+    setBatchFailedIds([]);
+    setBatchFailureMessages({});
+    setBatchRetryContext(null);
+    setBatchCancelRequested(false);
+    setBatchWasCancelled(false);
+    setToast(null);
+
+    try {
+      const result = await executeBatchWithProgress({
+        ids: orderedSubmissionIds,
+        isCancelled: () => batchCancelRef.current.cancelled,
+        onProgress: (progress) => {
+          setBatchTotal(progress.total);
+          setBatchCompleted(progress.completed);
+          setBatchSucceeded(progress.succeeded);
+          setBatchFailed(progress.failed);
+          setBatchCurrentSubmissionId(progress.currentId);
+
+          if (action === "review") {
+            setReviewingSubmissionId(progress.currentId || "");
+          } else if (action === "summary") {
+            setSummarizingSubmissionId(progress.currentId || "");
+          } else {
+            setManualPublishingSubmissionId(progress.currentId || "");
+          }
+        },
+        worker: async (submissionId) => {
+          if (action === "review") {
+            await runSubmissionReview({
+              submission_id: submissionId,
+              agent_name: effectiveAgentName
+            });
+            return;
+          }
+
+          if (action === "summary") {
+            const payload = await createReviewSummary({ submission_id: submissionId });
+            setSummaryBySubmissionId((prev) => ({ ...prev, [submissionId]: payload }));
+            return;
+          }
+
+          const existing = await getManualReviewForSubmission(submissionId);
+          if (!existing.exists || !existing.review) {
+            throw new Error("未找到手工批改草稿，请先保存草稿后再批量发布。");
+          }
+          if (existing.review.status === "published") {
+            return;
+          }
+          await publishManualReview({ submission_id: submissionId });
+        }
+      });
+
+      setBatchFailedIds(result.failedIds);
+      setBatchFailureMessages(result.failureMessages);
+      if (result.failedIds.length > 0) {
+        setBatchRetryContext({
+          action,
+          agentName: effectiveAgentName
+        });
+      }
+      setBatchWasCancelled(result.cancelled);
+
+      await loadDetail();
+      setToast({
+        type: result.failedIds.length > 0 || result.cancelled ? "error" : "ok",
+        message:
+          result.cancelled
+            ? `批量${batchActionLabel(action)}已中止：完成 ${result.succeededIds.length + result.failedIds.length}/${result.total}，成功 ${result.succeededIds.length}，失败 ${result.failedIds.length}。`
+            : result.failedIds.length > 0
+              ? `批量${batchActionLabel(action)}完成：成功 ${result.succeededIds.length}，失败 ${result.failedIds.length}。可点击“重试失败项”。`
+              : `批量${batchActionLabel(action)}完成：共 ${result.succeededIds.length} 项。`
+      });
+    } catch (batchError) {
+      setToast({ type: "error", message: `批量${batchActionLabel(action)}执行失败：${(batchError as Error).message}` });
+    } finally {
+      setBatchRunning(false);
+      setBatchCurrentSubmissionId(null);
+      setReviewingSubmissionId("");
+      setSummarizingSubmissionId("");
+      setManualPublishingSubmissionId("");
+      setBatchCancelRequested(false);
+    }
+  };
+
+  const retryFailedBatchAction = async () => {
+    if (!batchRetryContext || batchFailedIds.length === 0 || batchRunning) {
+      return;
+    }
+    await executeBatchAction(batchRetryContext.action, batchFailedIds, batchRetryContext.agentName);
+  };
+
+  const requestBatchCancel = () => {
+    if (!batchRunning || batchCancelRequested) {
+      return;
+    }
+    batchCancelRef.current.cancelled = true;
+    setBatchCancelRequested(true);
+    setToast({
+      type: "error",
+      message: "已请求中止批量执行，当前项完成后会停止后续任务。"
+    });
+  };
+
+  const goToWorkflowStep = (nextIndex: number) => {
+    if (workflowAssignmentIds.length === 0 || nextIndex < 0 || nextIndex >= workflowAssignmentIds.length) {
+      return;
+    }
+    const nextAssignmentId = workflowAssignmentIds[nextIndex];
+    const encodedIds = encodeURIComponent(workflowAssignmentIds.join(","));
+    router.push(`/teacher/assignments/${nextAssignmentId}?batch_ids=${encodedIds}&batch_index=${nextIndex}`);
+  };
+
   if (!currentUser || currentUser.role !== "teacher") {
     return (
       <main className="mx-auto min-h-screen max-w-4xl p-6 md:p-10">
@@ -418,11 +663,43 @@ export default function TeacherAssignmentDetailPage() {
           </div>
 
           <div className="flex items-center justify-between text-sm">
-            <Link className="underline" href="/teacher">
-              返回教师工作台
+            <Link className="underline" href="/teacher/tasks">
+              返回任务中心
             </Link>
             <p className="text-slate-700">Assignment ID: {assignmentId}</p>
           </div>
+
+          {workflowAssignmentIds.length > 1 && workflowIndex >= 0 ? (
+            <div className="rounded-xl border border-slate-300/60 bg-white/75 px-4 py-3 text-xs text-slate-800">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p>
+                  跨任务批处理工作流：第 {workflowIndex + 1}/{workflowAssignmentIds.length} 个任务
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="btn-seal px-3 py-1 text-xs"
+                    onClick={() => {
+                      goToWorkflowStep(workflowIndex - 1);
+                    }}
+                    type="button"
+                    disabled={workflowIndex <= 0}
+                  >
+                    上一个任务
+                  </button>
+                  <button
+                    className="btn-ink px-3 py-1 text-xs"
+                    onClick={() => {
+                      goToWorkflowStep(workflowIndex + 1);
+                    }}
+                    type="button"
+                    disabled={workflowIndex >= workflowAssignmentIds.length - 1}
+                  >
+                    下一个任务
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {loading ? <p className="text-sm text-slate-700">任务详情加载中...</p> : null}
           {error ? (
@@ -474,6 +751,133 @@ export default function TeacherAssignmentDetailPage() {
                     {showOnlyPendingReplies ? "显示全部提交" : "只看待回复"}
                   </button>
                 </div>
+                <div className="fixed inset-x-0 top-3 z-40 px-3 md:px-8">
+                  <div className="mx-auto max-w-6xl pointer-events-none">
+                    <div className="pointer-events-auto rounded-xl border border-slate-300/70 bg-white/90 px-3 py-3 shadow-lg backdrop-blur">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-slate-800">批量操作条（吸顶）</p>
+                    <p className="text-[11px] text-slate-700">
+                      状态：
+                      {batchRunning
+                        ? batchCancelRequested
+                          ? " 中止中（当前项完成后停止）"
+                          : " 执行中"
+                        : batchWasCancelled
+                          ? " 已中止"
+                          : batchAction
+                            ? " 已完成"
+                            : " 待执行"}
+                    </p>
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <button
+                      className="btn-seal px-3 py-1 text-xs"
+                      onClick={toggleSelectVisibleSubmissions}
+                      type="button"
+                      disabled={batchRunning || visibleSubmissionIds.length === 0}
+                    >
+                      {allVisibleSelected ? "取消勾选当前列表" : "勾选当前列表"}
+                    </button>
+                    <span className="text-xs text-slate-700">
+                      已选 {selectedSubmissionIds.length} 项（当前列表已选 {selectedVisibleCount}/{visibleSubmissionIds.length}）
+                    </span>
+                    <select
+                      className="field w-40 text-xs"
+                      value={batchAgentName}
+                      onChange={(event) => setBatchAgentName(event.target.value as ReviewAgentName)}
+                      disabled={batchRunning}
+                    >
+                      <option value="value">立意 Agent</option>
+                      <option value="structure">结构 Agent</option>
+                      <option value="language">语言 Agent</option>
+                    </select>
+                    <button
+                      className="btn-ink px-3 py-1 text-xs"
+                      onClick={() => {
+                        void executeBatchAction("review", selectedSubmissionIds);
+                      }}
+                      type="button"
+                      disabled={batchRunning || selectedSubmissionIds.length === 0}
+                    >
+                      批量 Agent 批改
+                    </button>
+                    <button
+                      className="btn-seal px-3 py-1 text-xs"
+                      onClick={() => {
+                        void executeBatchAction("summary", selectedSubmissionIds);
+                      }}
+                      type="button"
+                      disabled={batchRunning || selectedSubmissionIds.length === 0}
+                    >
+                      批量生成汇总
+                    </button>
+                    <button
+                      className="btn-seal px-3 py-1 text-xs"
+                      onClick={() => {
+                        void executeBatchAction("publish", selectedSubmissionIds);
+                      }}
+                      type="button"
+                      disabled={batchRunning || selectedSubmissionIds.length === 0}
+                    >
+                      批量发布
+                    </button>
+                    {batchRunning ? (
+                      <button
+                        className="btn-ink px-3 py-1 text-xs"
+                        onClick={requestBatchCancel}
+                        type="button"
+                        disabled={batchCancelRequested}
+                      >
+                        {batchCancelRequested ? "中止中..." : "中止执行"}
+                      </button>
+                    ) : null}
+                    {batchFailedIds.length > 0 ? (
+                      <button
+                        className="btn-ink px-3 py-1 text-xs"
+                        onClick={() => {
+                          void retryFailedBatchAction();
+                        }}
+                        type="button"
+                        disabled={batchRunning}
+                      >
+                        重试失败项（{batchFailedIds.length}）
+                      </button>
+                    ) : null}
+                  </div>
+                  {batchAction && batchTotal > 0 ? (
+                    <div className="mt-3 rounded-md border border-slate-300/60 bg-white/80 px-3 py-2 text-xs text-slate-700">
+                      <p>
+                        当前批量：{batchActionLabel(batchAction)} · 进度 {batchCompleted}/{batchTotal} · 成功 {batchSucceeded} · 失败{" "}
+                        {batchFailed}
+                        {batchWasCancelled && !batchRunning ? " · 已中止" : ""}
+                      </p>
+                      <div className="mt-2 h-2 w-full rounded bg-slate-200">
+                        <div
+                          className="h-2 rounded bg-emerald-600/80 transition-all"
+                          style={{ width: `${batchTotal > 0 ? Math.round((batchCompleted / batchTotal) * 100) : 0}%` }}
+                        />
+                      </div>
+                      {batchCurrentSubmissionId ? (
+                        <p className="mt-2">
+                          正在处理：{submissionNameById[batchCurrentSubmissionId] || "未知学生"}（{batchCurrentSubmissionId}）
+                        </p>
+                      ) : null}
+                      {batchFailedIds.length > 0 ? (
+                        <ul className="mt-2 list-disc space-y-1 pl-4 text-rose-900">
+                          {batchFailedIds.slice(0, 5).map((submissionId) => (
+                            <li key={submissionId}>
+                              {submissionNameById[submissionId] || submissionId}：{batchFailureMessages[submissionId]}
+                            </li>
+                          ))}
+                          {batchFailedIds.length > 5 ? <li>其余 {batchFailedIds.length - 5} 项可点击重试失败项处理。</li> : null}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
+                    </div>
+                  </div>
+                </div>
+                <div className="h-24 md:h-20" aria-hidden />
                 <ul className="mt-3 space-y-2">
                   {visibleSubmissions.length === 0 ? (
                     <li className="text-sm text-slate-600">暂无学生提交，后续可接入 Agent 批改流程。</li>
@@ -501,9 +905,21 @@ export default function TeacherAssignmentDetailPage() {
                           key={submission.submission_id}
                           className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-3 text-sm text-slate-800"
                         >
-                          <p className="font-semibold">
-                            {submission.student_name} · {submission.content_type}
-                          </p>
+                          <div className="flex items-center justify-between gap-3">
+                            <label className="flex items-center gap-2 font-semibold">
+                              <input
+                                type="checkbox"
+                                checked={selectedSubmissionIds.includes(submission.submission_id)}
+                                onChange={() => {
+                                  toggleSelectSubmission(submission.submission_id);
+                                }}
+                                disabled={batchRunning}
+                              />
+                              <span>
+                                {submission.student_name} · {submission.content_type}
+                              </span>
+                            </label>
+                          </div>
                           <p className="text-xs text-slate-600">Submission ID: {submission.submission_id}</p>
                           <p className="mt-1 text-xs text-slate-700">手工批改状态：{manualStatusText}</p>
                           {queueItem?.manual_updated_at ? (
@@ -551,13 +967,14 @@ export default function TeacherAssignmentDetailPage() {
                                 void openManualEditor(submission.submission_id);
                               }}
                               type="button"
-                              disabled={isManualLoading}
+                              disabled={isManualLoading || batchRunning}
                             >
                               {isManualLoading ? "加载批改中..." : isEditingManual ? "继续编辑手工批改" : "手工批改"}
                             </button>
                             <select
                               className="field w-44 text-xs"
                               value={agentBySubmission[submission.submission_id] ?? "value"}
+                              disabled={batchRunning}
                               onChange={(event) =>
                                 setAgentBySubmission((prev) => ({
                                   ...prev,
@@ -575,7 +992,7 @@ export default function TeacherAssignmentDetailPage() {
                                 void runReview(submission.submission_id);
                               }}
                               type="button"
-                              disabled={reviewingSubmissionId === submission.submission_id}
+                              disabled={reviewingSubmissionId === submission.submission_id || batchRunning}
                             >
                               {reviewingSubmissionId === submission.submission_id ? "批改中..." : "调用 Agent 批改"}
                             </button>
@@ -585,7 +1002,7 @@ export default function TeacherAssignmentDetailPage() {
                                 void loadStudentMemory(submission.student_id);
                               }}
                               type="button"
-                              disabled={memoryLoadingStudentId === submission.student_id}
+                              disabled={memoryLoadingStudentId === submission.student_id || batchRunning}
                             >
                               {memoryLoadingStudentId === submission.student_id ? "加载中..." : "查看长期记忆"}
                             </button>
@@ -595,7 +1012,7 @@ export default function TeacherAssignmentDetailPage() {
                                 void generateSummary(submission.submission_id);
                               }}
                               type="button"
-                              disabled={summarizingSubmissionId === submission.submission_id}
+                              disabled={summarizingSubmissionId === submission.submission_id || batchRunning}
                             >
                               {summarizingSubmissionId === submission.submission_id ? "汇总中..." : "生成多 Agent 汇总"}
                             </button>
@@ -605,7 +1022,7 @@ export default function TeacherAssignmentDetailPage() {
                                 void loadReplyThread(submission.submission_id);
                               }}
                               type="button"
-                              disabled={isReplyLoading}
+                              disabled={isReplyLoading || batchRunning}
                             >
                               {isReplyLoading ? "加载回复中..." : "查看批改回复"}
                             </button>
@@ -647,7 +1064,7 @@ export default function TeacherAssignmentDetailPage() {
                                     void submitTeacherReply(submission.submission_id);
                                   }}
                                   type="button"
-                                  disabled={isReplySubmitting}
+                                  disabled={isReplySubmitting || batchRunning}
                                 >
                                   {isReplySubmitting ? "发送中..." : "发送教师回复"}
                                 </button>
@@ -754,7 +1171,7 @@ export default function TeacherAssignmentDetailPage() {
                                         void onSaveManualDraft(submission.submission_id);
                                       }}
                                       type="button"
-                                      disabled={isManualSaving || isManualPublishing}
+                                      disabled={isManualSaving || isManualPublishing || batchRunning}
                                     >
                                       {isManualSaving ? "保存中..." : "保存草稿"}
                                     </button>
@@ -764,7 +1181,7 @@ export default function TeacherAssignmentDetailPage() {
                                         void onPublishManualReview(submission.submission_id);
                                       }}
                                       type="button"
-                                      disabled={isManualSaving || isManualPublishing}
+                                      disabled={isManualSaving || isManualPublishing || batchRunning}
                                     >
                                       {isManualPublishing ? "发布中..." : "发布给学生"}
                                     </button>
@@ -774,7 +1191,7 @@ export default function TeacherAssignmentDetailPage() {
                                         setManualEditingSubmissionId("");
                                       }}
                                       type="button"
-                                      disabled={isManualSaving || isManualPublishing}
+                                      disabled={isManualSaving || isManualPublishing || batchRunning}
                                     >
                                       收起
                                     </button>

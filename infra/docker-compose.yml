@@ -30,6 +30,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=2)\"",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
     ports:
       - "8000:8000"
 
@@ -39,7 +49,8 @@ services:
     env_file:
       - ../.env
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "3000:3000"
 

@@ -8,6 +8,7 @@ from app.api.deps.auth import get_current_user, require_teacher
 from app.db.deps import get_db
 from app.models import (
     Assignment,
+    AssignmentReminder,
     ClassMember,
     ClassRoom,
     ManualFeedbackReceipt,
@@ -19,6 +20,9 @@ from app.models import (
     User,
 )
 from app.schemas.assignment import (
+    AssignmentBatchActionRequest,
+    AssignmentBatchActionResponse,
+    AssignmentBatchActionResultItem,
     AssignmentDetailResponse,
     AssignmentListItem,
     AssignmentSubmissionItem,
@@ -149,6 +153,140 @@ def get_assignment_detail(
         created_at=assignment.created_at,
         submissions_count=len(submissions),
         submissions=submissions,
+    )
+
+
+@router.post("/batch/actions", response_model=AssignmentBatchActionResponse)
+def execute_assignment_batch_action(
+    payload: AssignmentBatchActionRequest,
+    db: Session = Depends(get_db),
+    current_teacher: User = Depends(require_teacher),
+) -> AssignmentBatchActionResponse:
+    assignment_ids = payload.assignment_ids
+    assignments = db.scalars(select(Assignment).where(Assignment.id.in_(assignment_ids))).all()
+    assignment_by_id = {item.id: item for item in assignments}
+    workflow_assignment_ids: list[str] = []
+    results: list[AssignmentBatchActionResultItem] = []
+
+    for assignment_id in assignment_ids:
+        assignment = assignment_by_id.get(assignment_id)
+        if not assignment:
+            results.append(
+                AssignmentBatchActionResultItem(
+                    assignment_id=assignment_id,
+                    status="failed",
+                    detail="任务不存在或已删除。",
+                )
+            )
+            continue
+        if assignment.teacher_id != current_teacher.id:
+            results.append(
+                AssignmentBatchActionResultItem(
+                    assignment_id=assignment_id,
+                    title=assignment.title,
+                    class_id=assignment.class_id,
+                    status="failed",
+                    detail="你无权操作该任务。",
+                )
+            )
+            continue
+
+        if payload.action == "enter_workflow":
+            workflow_assignment_ids.append(assignment.id)
+            results.append(
+                AssignmentBatchActionResultItem(
+                    assignment_id=assignment.id,
+                    title=assignment.title,
+                    class_id=assignment.class_id,
+                    status="success",
+                    detail="已加入批处理工作流。",
+                    detail_path=f"/teacher/assignments/{assignment.id}",
+                )
+            )
+            continue
+
+        if payload.action == "publish_reminder":
+            class_student_ids = db.scalars(
+                select(ClassMember.student_id).where(ClassMember.class_id == assignment.class_id)
+            ).all()
+            submitted_student_ids = db.scalars(
+                select(Submission.student_id)
+                .where(Submission.assignment_id == assignment.id)
+                .distinct()
+            ).all()
+            pending_count = max(0, len(set(class_student_ids) - set(submitted_student_ids)))
+
+            reminder_message = (
+                "请尽快提交本次作文任务。"
+                if pending_count > 0
+                else "班级内学生已全部提交，本次提醒记录为零目标提醒。"
+            )
+            db.add(
+                AssignmentReminder(
+                    id=str(uuid4()),
+                    assignment_id=assignment.id,
+                    class_id=assignment.class_id,
+                    teacher_id=current_teacher.id,
+                    reminder_type="submission",
+                    target_student_count=pending_count,
+                    message=reminder_message,
+                )
+            )
+            results.append(
+                AssignmentBatchActionResultItem(
+                    assignment_id=assignment.id,
+                    title=assignment.title,
+                    class_id=assignment.class_id,
+                    status="success",
+                    detail="提醒已记录，可用于后续短信/企微等渠道发送。",
+                    reminder_target_count=pending_count,
+                )
+            )
+            continue
+
+        if payload.action == "advance_status":
+            if not payload.target_status:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="target_status is required for advance_status action",
+                )
+            before_status = assignment.status
+            assignment.status = payload.target_status
+            results.append(
+                AssignmentBatchActionResultItem(
+                    assignment_id=assignment.id,
+                    title=assignment.title,
+                    class_id=assignment.class_id,
+                    status="success",
+                    detail="任务状态已推进。",
+                    before_status=before_status,
+                    after_status=assignment.status,
+                )
+            )
+            continue
+
+        results.append(
+            AssignmentBatchActionResultItem(
+                assignment_id=assignment.id,
+                title=assignment.title,
+                class_id=assignment.class_id,
+                status="failed",
+                detail="未知批处理动作。",
+            )
+        )
+
+    if payload.action in {"publish_reminder", "advance_status"}:
+        db.commit()
+
+    succeeded = sum(1 for item in results if item.status == "success")
+    failed = len(results) - succeeded
+    return AssignmentBatchActionResponse(
+        action=payload.action,
+        total=len(results),
+        succeeded=succeeded,
+        failed=failed,
+        workflow_assignment_ids=workflow_assignment_ids,
+        results=results,
     )
 
 

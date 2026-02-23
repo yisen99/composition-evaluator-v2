@@ -9,5 +9,5 @@ type TeacherLoginPageProps = {
 export default function TeacherLoginPage({ searchParams }: TeacherLoginPageProps) {
   const next = searchParams?.next;
   const requestedNext = Array.isArray(next) ? next[0] : next;
-  return <RoleAuthPage role="teacher" allowSms={false} requestedNext={requestedNext ?? null} />;
+  return <RoleAuthPage role="teacher" allowSms={true} requestedNext={requestedNext ?? null} />;
 }

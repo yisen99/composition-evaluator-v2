@@ -46,13 +46,33 @@ make db-verify-rollback  # 升级->回滚->再升级 的完整验证
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/register` (成熟账号方案，FastAPI Users)
 - `POST /api/v1/auth/jwt/login`
+- `POST /api/v1/auth/password-login`
 - `GET /api/v1/auth/me`
+- `POST /api/v1/auth/refresh`
+- `GET /api/v1/auth/wechat/authorize`
+- `GET /api/v1/auth/wechat/callback`
+- `POST /api/v1/auth/wechat/send-bind-code`
+- `POST /api/v1/auth/wechat/bind-phone`
 
 ## 认证方案
 
 项目已接入 GitHub 成熟后端方案 [fastapi-users](https://github.com/fastapi-users/fastapi-users)：
 
 - 账号注册（邮箱+密码）
-- JWT 登录与授权校验
+- 统一 token 校验（`fastapi-users` 鉴权依赖）
+- 支持 `AUTH_TOKEN_STRATEGY=jwt|redis`（推荐 `redis`，便于 token 吊销）
+- 登录后返回 `access_token + refresh_token`，可调用 `/api/v1/auth/refresh` 轮换
+- 短信验证码发送带冷却时间限制（`AUTH_CODE_RESEND_COOLDOWN_SECONDS`）
 - 角色授权（teacher/student）与业务接口联动
 - 保留短信验证码链路用于学生侧调试（老师账号使用邮箱密码）
+- Casdoor 统一社交登录（接入微信）+ 强制手机号绑定（绑定前不签发业务 token）
+
+### Casdoor 配置
+
+后端保持 `/api/v1/auth/wechat/*` 接口不变，但 OAuth 提供方改为 Casdoor。需要在 `.env` 配置：
+
+- `CASDOOR_ENDPOINT`
+- `CASDOOR_CLIENT_ID`
+- `CASDOOR_CLIENT_SECRET`
+- `CASDOOR_REDIRECT_URI`（建议配置为前端回调页 `http://127.0.0.1:3000/login/wechat/callback`）
+- 可选：`CASDOOR_SCOPE`、`CASDOOR_AUTHORIZE_PATH`、`CASDOOR_TOKEN_PATH`、`CASDOOR_USERINFO_PATH`

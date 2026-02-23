@@ -26,6 +26,23 @@ def test_send_code_contract() -> None:
     assert payload["expires_in"] == 300
 
 
+def test_send_code_rate_limit_contract() -> None:
+    phone = _dynamic_phone("132")
+    with TestClient(app) as client:
+        first_response = client.post(
+            "/api/v1/auth/send-code",
+            json={"phone": phone, "role_hint": "student"},
+        )
+        second_response = client.post(
+            "/api/v1/auth/send-code",
+            json={"phone": phone, "role_hint": "student"},
+        )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 429
+    assert second_response.json()["detail"] == "Verification code requested too frequently"
+
+
 def test_login_contract() -> None:
     phone = _dynamic_phone("135")
     with TestClient(app) as client:
@@ -47,6 +64,45 @@ def test_login_contract() -> None:
     assert payload["user"]["phone"] == phone
     assert payload["user"]["role"] == "student"
     assert payload["user"]["display_name"] == "小明"
+
+
+def test_login_refresh_contract() -> None:
+    phone = _dynamic_phone("134")
+    with TestClient(app) as client:
+        send_code_response = client.post(
+            "/api/v1/auth/send-code",
+            json={"phone": phone, "role_hint": "student"},
+        )
+        assert send_code_response.status_code == 200
+
+        login_response = client.post(
+            "/api/v1/auth/login",
+            json={"phone": phone, "code": "123456", "display_name": "小明"},
+        )
+        assert login_response.status_code == 200
+        refresh_token = login_response.json()["refresh_token"]
+
+        refresh_response = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": refresh_token},
+        )
+
+    assert refresh_response.status_code == 200
+    refresh_payload = refresh_response.json()
+    assert refresh_payload["access_token"]
+    assert refresh_payload["refresh_token"]
+    assert refresh_payload["user"]["phone"] == phone
+    assert refresh_payload["user"]["role"] == "student"
+
+
+def test_refresh_rejects_invalid_token() -> None:
+    with TestClient(app) as client:
+        refresh_response = client.post(
+            "/api/v1/auth/refresh",
+            json={"refresh_token": "invalid-refresh-token"},
+        )
+
+    assert refresh_response.status_code == 401
 
 
 def test_send_code_rejects_teacher_sms_signup_for_new_phone() -> None:
@@ -91,6 +147,30 @@ def test_existing_teacher_can_use_sms_login() -> None:
     assert login_response.json()["user"]["role"] == "teacher"
 
 
+def test_sms_login_token_can_access_protected_student_api() -> None:
+    phone = _dynamic_phone("133")
+    with TestClient(app) as client:
+        send_code_response = client.post(
+            "/api/v1/auth/send-code",
+            json={"phone": phone, "role_hint": "student"},
+        )
+        assert send_code_response.status_code == 200
+
+        login_response = client.post(
+            "/api/v1/auth/login",
+            json={"phone": phone, "code": "123456", "display_name": "短信学生"},
+        )
+        assert login_response.status_code == 200
+        access_token = login_response.json()["access_token"]
+
+        classes_response = client.get(
+            "/api/v1/classes",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+    assert classes_response.status_code == 200
+
+
 def test_account_register_and_password_login_contract() -> None:
     with TestClient(app) as client:
         email = f"teacher_pwd_{time.time_ns()}@example.com"
@@ -111,13 +191,13 @@ def test_account_register_and_password_login_contract() -> None:
         assert register_payload["role"] == "teacher"
 
         login_response = client.post(
-            "/api/v1/auth/jwt/login",
-            data={"username": email, "password": "SecurePass123!"},
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            "/api/v1/auth/password-login",
+            json={"email": email, "password": "SecurePass123!"},
         )
         assert login_response.status_code == 200
         token_payload = login_response.json()
         assert token_payload["access_token"]
+        assert token_payload["refresh_token"]
 
         create_class_response = client.post(
             "/api/v1/classes",
@@ -213,9 +293,8 @@ def test_password_login_syncs_domain_user_role_from_account() -> None:
         assert register_response.status_code == 201
 
         first_login = client.post(
-            "/api/v1/auth/jwt/login",
-            data={"username": email, "password": "SecurePass123!"},
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            "/api/v1/auth/password-login",
+            json={"email": email, "password": "SecurePass123!"},
         )
         assert first_login.status_code == 200
 
@@ -229,9 +308,8 @@ def test_password_login_syncs_domain_user_role_from_account() -> None:
             db.close()
 
         second_login = client.post(
-            "/api/v1/auth/jwt/login",
-            data={"username": email, "password": "SecurePass123!"},
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            "/api/v1/auth/password-login",
+            json={"email": email, "password": "SecurePass123!"},
         )
         assert second_login.status_code == 200
         token = second_login.json()["access_token"]

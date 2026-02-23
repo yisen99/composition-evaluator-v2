@@ -5,6 +5,8 @@ import type {
   AssignmentGradingQueueResponse,
   AssignmentDetailResponse,
   AssignmentListItem,
+  TeacherAssignmentBatchActionRequest,
+  TeacherAssignmentBatchActionResponse,
   ClassListItem,
   CreateCompositionSubmissionRequest,
   CreateCompositionSubmissionResponse,
@@ -25,6 +27,7 @@ import type {
   ManualReviewSubmissionResponse,
   ReviewSummaryRequest,
   ReviewSummaryResponse,
+  RefreshTokenRequest,
   RunSubmissionReviewRequest,
   RunSubmissionReviewResponse,
   SendCodeRequest,
@@ -32,15 +35,31 @@ import type {
   StudentManualFeedbackItem,
   StudentProgressResponse,
   StudentSubmissionListItem,
-  StudentMemoryResponse
+  StudentMemoryResponse,
+  WechatAuthPayload,
+  WechatAuthorizeResponse,
+  WechatBindPhoneRequest,
+  WechatBindSendCodeRequest,
+  UxEventTrackRequest,
+  UxEventTrackResponse,
+  UxMetricsSummaryResponse
 } from "@/lib/api/types";
 import { getAccessToken } from "@/lib/auth/session";
 
 export const API_PROXY_PREFIX = "/api/backend";
 const API_ERROR_MESSAGES: Record<string, string> = {
   REGISTER_USER_ALREADY_EXISTS: "该邮箱或手机号已被注册，请更换后重试。",
+  REGISTER_INVALID_PASSWORD: "密码不符合要求，请至少输入 8 位字符。",
   LOGIN_BAD_CREDENTIALS: "账号或密码错误，请检查后重试。",
-  "Teacher SMS signup is disabled": "老师账号不支持短信注册，请使用邮箱密码注册/登录。",
+  "Invalid email or password": "账号或密码错误，请检查后重试。",
+  "Password should be at least 8 characters": "密码不符合要求，请至少输入 8 位字符。",
+  "Teacher SMS signup is disabled": "当前手机号未绑定老师账号，请先使用邮箱密码登录。",
+  "Casdoor OAuth is not configured": "微信登录尚未配置，请联系管理员。",
+  "Wechat OAuth is not configured": "微信登录尚未配置，请联系管理员。",
+  "Verification code requested too frequently": "验证码发送过于频繁，请稍后再试。",
+  "Wechat account role mismatch": "该微信账号已绑定其他身份，请切换正确入口登录。",
+  "Wechat bind ticket expired": "微信绑定已过期，请重新发起微信登录。",
+  "Wechat bind ticket has been used": "该绑定票据已使用，请重新发起微信登录。",
   "Assignment due date has passed": "任务已截止，无法继续提交。",
   "Assignment is not open for submission": "当前任务未开放提交。",
   "Unsupported image file type": "图片格式不支持，请使用 jpg/jpeg/png/webp/gif。",
@@ -51,6 +70,13 @@ const API_ERROR_MESSAGES: Record<string, string> = {
 
 type ErrorDetailItem = {
   msg?: string;
+};
+
+type ErrorDetailObject = {
+  code?: unknown;
+  reason?: unknown;
+  msg?: unknown;
+  message?: unknown;
 };
 
 export function buildApiPath(path: string): string {
@@ -65,6 +91,22 @@ function extractErrorDetail(payload: unknown): string | undefined {
   const detail = (payload as { detail?: unknown }).detail;
   if (typeof detail === "string") {
     return detail;
+  }
+
+  if (typeof detail === "object" && detail && !Array.isArray(detail)) {
+    const detailObject = detail as ErrorDetailObject;
+    if (typeof detailObject.code === "string" && detailObject.code) {
+      return detailObject.code;
+    }
+    if (typeof detailObject.reason === "string" && detailObject.reason) {
+      return detailObject.reason;
+    }
+    if (typeof detailObject.msg === "string" && detailObject.msg) {
+      return detailObject.msg;
+    }
+    if (typeof detailObject.message === "string" && detailObject.message) {
+      return detailObject.message;
+    }
   }
 
   if (Array.isArray(detail)) {
@@ -83,6 +125,9 @@ function extractErrorDetail(payload: unknown): string | undefined {
 function toDisplayErrorMessage(status: number, detail?: string): string {
   if (detail?.startsWith("File is too large")) {
     return "文件过大，请控制在 10MB 内后重试。";
+  }
+  if (detail?.includes("valid email address")) {
+    return "邮箱格式不正确，请检查后重试。";
   }
   if (detail && API_ERROR_MESSAGES[detail]) {
     return API_ERROR_MESSAGES[detail];
@@ -128,10 +173,16 @@ async function apiRequest<T>(path: string, init?: RequestInit, withAuth = true):
     headers.Authorization = `Bearer ${authToken}`;
   }
 
-  const response = await fetch(buildApiPath(path), {
-    ...init,
-    headers
-  });
+  let response: Response;
+  try {
+    response = await fetch(buildApiPath(path), {
+      ...init,
+      headers
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    throw new Error(`网络连接异常，请稍后重试。${message ? ` (${message})` : ""}`);
+  }
 
   if (!response.ok) {
     throw await createApiError(response);
@@ -147,35 +198,22 @@ async function apiFormRequest<T>(path: string, formData: FormData): Promise<T> {
     headers.Authorization = `Bearer ${authToken}`;
   }
 
-  const response = await fetch(buildApiPath(path), {
-    method: "POST",
-    headers,
-    body: formData
-  });
+  let response: Response;
+  try {
+    response = await fetch(buildApiPath(path), {
+      method: "POST",
+      headers,
+      body: formData
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    throw new Error(`网络连接异常，请稍后重试。${message ? ` (${message})` : ""}`);
+  }
 
   if (!response.ok) {
     throw await createApiError(response);
   }
 
-  return (await response.json()) as T;
-}
-
-async function apiRequestWithToken<T>(path: string, token: string, init?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`
-  };
-  if (init?.headers) {
-    Object.assign(headers, init.headers as Record<string, string>);
-  }
-
-  const response = await fetch(buildApiPath(path), {
-    ...init,
-    headers
-  });
-  if (!response.ok) {
-    throw await createApiError(response);
-  }
   return (await response.json()) as T;
 }
 
@@ -197,6 +235,13 @@ export function login(payload: LoginRequest): Promise<LoginResponse> {
   }, false);
 }
 
+export function refreshLogin(payload: RefreshTokenRequest): Promise<LoginResponse> {
+  return apiRequest<LoginResponse>("/api/v1/auth/refresh", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  }, false);
+}
+
 export function registerAccount(payload: AccountRegisterRequest): Promise<AccountRegisterResponse> {
   return apiRequest<AccountRegisterResponse>("/api/v1/auth/register", {
     method: "POST",
@@ -204,35 +249,46 @@ export function registerAccount(payload: AccountRegisterRequest): Promise<Accoun
   }, false);
 }
 
-export async function loginWithPassword(email: string, password: string): Promise<LoginResponse> {
-  const form = new URLSearchParams();
-  form.set("username", email);
-  form.set("password", password);
+export function getWechatAuthorizeUrl(role: "teacher" | "student", nextPath?: string | null): Promise<WechatAuthorizeResponse> {
+  const query = new URLSearchParams({ role });
+  if (nextPath) {
+    query.set("next", nextPath);
+  }
+  return apiRequest<WechatAuthorizeResponse>(`/api/v1/auth/wechat/authorize?${query.toString()}`, {
+    method: "GET"
+  }, false);
+}
 
-  const tokenPayload = await apiRequest<{ access_token: string; token_type: string }>(
-    "/api/v1/auth/jwt/login",
+export function wechatCallback(code: string, state: string): Promise<WechatAuthPayload> {
+  const query = new URLSearchParams({ code, state });
+  return apiRequest<WechatAuthPayload>(`/api/v1/auth/wechat/callback?${query.toString()}`, {
+    method: "GET"
+  }, false);
+}
+
+export function sendWechatBindCode(payload: WechatBindSendCodeRequest): Promise<SendCodeResponse> {
+  return apiRequest<SendCodeResponse>("/api/v1/auth/wechat/send-bind-code", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  }, false);
+}
+
+export function bindWechatPhone(payload: WechatBindPhoneRequest): Promise<LoginResponse> {
+  return apiRequest<LoginResponse>("/api/v1/auth/wechat/bind-phone", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  }, false);
+}
+
+export async function loginWithPassword(email: string, password: string): Promise<LoginResponse> {
+  return apiRequest<LoginResponse>(
+    "/api/v1/auth/password-login",
     {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: form.toString()
+      body: JSON.stringify({ email, password })
     },
     false
   );
-
-  const profile = await apiRequestWithToken<AccountRegisterResponse>("/api/v1/auth/me", tokenPayload.access_token, {
-    method: "GET"
-  });
-
-  return {
-    access_token: tokenPayload.access_token,
-    refresh_token: "",
-    user: {
-      id: profile.id,
-      role: profile.role,
-      phone: profile.phone || profile.email,
-      display_name: profile.display_name
-    }
-  };
 }
 
 export function createClass(payload: CreateClassRequest): Promise<CreateClassResponse> {
@@ -265,6 +321,15 @@ export function listClasses(): Promise<ClassListItem[]> {
 export function listAssignments(): Promise<AssignmentListItem[]> {
   return apiRequest<AssignmentListItem[]>("/api/v1/assignments", {
     method: "GET"
+  });
+}
+
+export function executeTeacherAssignmentBatchAction(
+  payload: TeacherAssignmentBatchActionRequest
+): Promise<TeacherAssignmentBatchActionResponse> {
+  return apiRequest<TeacherAssignmentBatchActionResponse>("/api/v1/assignments/batch/actions", {
+    method: "POST",
+    body: JSON.stringify(payload)
   });
 }
 
@@ -389,5 +454,18 @@ export function markMyManualFeedbackRead(submissionIds: string[]): Promise<MarkM
   return apiRequest<MarkManualFeedbackReadResponse>("/api/v1/submissions/me/manual-feedback/mark-read", {
     method: "POST",
     body: JSON.stringify({ submission_ids: submissionIds })
+  });
+}
+
+export function trackUxEvent(payload: UxEventTrackRequest): Promise<UxEventTrackResponse> {
+  return apiRequest<UxEventTrackResponse>("/api/v1/observability/events", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function getUxMetricsSummary(days = 7): Promise<UxMetricsSummaryResponse> {
+  return apiRequest<UxMetricsSummaryResponse>(`/api/v1/observability/summary?days=${days}`, {
+    method: "GET"
   });
 }

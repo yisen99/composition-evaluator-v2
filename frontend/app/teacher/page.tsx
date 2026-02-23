@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { createAssignment, createClass, listAssignments, listClasses } from "@/lib/api/client";
-import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
+import { getAuthSession } from "@/lib/auth/session";
 import type { AssignmentListItem, ClassListItem, GradeBand, UserProfile } from "@/lib/api/types";
 
 type Toast = {
@@ -136,8 +136,8 @@ export default function TeacherPage() {
       <main className="mx-auto min-h-screen max-w-4xl p-6 md:p-10">
         <section className="poster-shell p-6 md:p-8">
           <div className="relative z-10 paper-card p-5">
-            <h1 className="poster-title text-3xl font-bold">老师页面需要教师登录</h1>
-            <p className="mt-2 text-sm text-slate-700">请先登录为老师账号，再进行建班与任务发布操作。</p>
+            <h1 className="poster-title text-3xl font-bold">班级与发布页需要教师登录</h1>
+            <p className="mt-2 text-sm text-slate-700">请先登录老师账号，再进行建班与任务发布操作。</p>
             <a className="btn-ink mt-4 inline-block text-sm" href="/login/teacher?next=%2Fteacher">
               前往登录
             </a>
@@ -152,35 +152,69 @@ export default function TeacherPage() {
       <section className="poster-shell p-6 md:p-8">
         <div className="relative z-10 flex flex-col gap-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="seal-chip">教师工作台 · 建班与任务发布</span>
+            <span className="seal-chip">班级与发布 · 教师后台</span>
             <div className="flex items-center gap-3 text-sm text-slate-700">
               <span>
                 {currentUser.display_name} · {currentUser.phone}
               </span>
-              <button
-                className="underline"
-                onClick={() => {
-                  clearAuthSession();
-                  window.location.href = "/login/teacher";
-                }}
-                type="button"
-              >
-                退出登录
-              </button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="paper-card p-4">
+              <p className="label">班级总数</p>
+              <p className="mt-2 text-2xl font-semibold">{classroomList.length}</p>
+            </div>
+            <div className="paper-card p-4">
+              <p className="label">任务总数</p>
+              <p className="mt-2 text-2xl font-semibold">{assignmentList.length}</p>
+            </div>
+            <div className="paper-card p-4">
+              <p className="label">最新任务</p>
+              <p className="mt-2 truncate text-sm font-semibold">{assignmentList[0]?.title || "尚未发布"}</p>
+            </div>
+          </div>
+
+          <div className="paper-card p-4">
+            <p className="label">快捷导航</p>
+            <div className="mt-2 flex flex-wrap gap-2 text-sm">
+              <Link className="rounded-full border border-emerald-700/35 bg-emerald-50 px-3 py-1" href="/teacher/tasks">
+                任务中心（优先级视图）
+              </Link>
+              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#create-class">
+                建班
+              </a>
+              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#publish-assignment">
+                发布任务
+              </a>
+              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#class-list">
+                查看班级
+              </a>
+              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#assignment-history">
+                查看任务记录
+              </a>
+              {latestAssignmentId ? (
+                <Link
+                  className="rounded-full border border-emerald-700/35 bg-emerald-50 px-3 py-1"
+                  href={`/teacher/assignments/${latestAssignmentId}`}
+                >
+                  进入最新任务详情
+                </Link>
+              ) : null}
             </div>
           </div>
 
           <div className="grid gap-5 lg:grid-cols-2">
-            <form className="paper-card space-y-4 p-5" onSubmit={onCreateClass}>
+            <form className="paper-card space-y-4 p-5" id="create-class" onSubmit={onCreateClass}>
               <h2 className="poster-title text-2xl font-semibold">1) 建立班级</h2>
 
               <div>
-                <p className="label">Class Name</p>
+                <p className="label">班级名称</p>
                 <input className="field mt-1" value={className} onChange={(event) => setClassName(event.target.value)} />
               </div>
 
               <div>
-                <p className="label">Grade Band</p>
+                <p className="label">学段</p>
                 <select
                   className="field mt-1"
                   value={gradeBand}
@@ -196,11 +230,11 @@ export default function TeacherPage() {
               </button>
             </form>
 
-            <form className="paper-card space-y-4 p-5" onSubmit={onCreateAssignment}>
+            <form className="paper-card space-y-4 p-5" id="publish-assignment" onSubmit={onCreateAssignment}>
               <h2 className="poster-title text-2xl font-semibold">2) 发布作文任务</h2>
 
               <div>
-                <p className="label">Target Class</p>
+                <p className="label">目标班级</p>
                 <select
                   className="field mt-1"
                   value={selectedClassId}
@@ -216,7 +250,7 @@ export default function TeacherPage() {
               </div>
 
               <div>
-                <p className="label">Title</p>
+                <p className="label">任务标题</p>
                 <input
                   className="field mt-1"
                   value={assignmentTitle}
@@ -225,7 +259,7 @@ export default function TeacherPage() {
               </div>
 
               <div>
-                <p className="label">Prompt</p>
+                <p className="label">作文要求</p>
                 <textarea
                   className="field mt-1 min-h-28"
                   value={assignmentPrompt}
@@ -234,7 +268,7 @@ export default function TeacherPage() {
               </div>
 
               <div>
-                <p className="label">Due At</p>
+                <p className="label">截止时间</p>
                 <input
                   className="field mt-1"
                   type="datetime-local"
@@ -264,7 +298,7 @@ export default function TeacherPage() {
           {busy === "loading" ? <p className="text-sm text-slate-700">正在同步班级与任务历史...</p> : null}
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <div className="paper-card p-4">
+            <div className="paper-card p-4" id="class-list">
               <p className="label">已创建班级</p>
               <ul className="mt-2 space-y-2 text-sm">
                 {classroomList.length === 0 ? (
@@ -274,14 +308,14 @@ export default function TeacherPage() {
                     <li key={room.class_id} className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-2">
                       <p className="font-semibold">{room.name}</p>
                       <p className="text-xs text-slate-700">学段：{room.grade_band === "primary" ? "小学" : "初中"}</p>
-                      <p className="text-xs text-slate-700">Class ID: {room.class_id}</p>
-                      <p className="text-xs text-slate-700">Join Code: {room.join_code}</p>
+                      <p className="text-xs text-slate-700">班级编号：{room.class_id}</p>
+                      <p className="text-xs text-slate-700">班级码：{room.join_code}</p>
                     </li>
                   ))
                 )}
               </ul>
             </div>
-            <div className="paper-card p-4">
+            <div className="paper-card p-4" id="assignment-history">
               <p className="label">任务发布记录</p>
               <div className="mt-2 space-y-2 text-sm">
                 <p>当前选中班级：{selectedClassName || "未选择"}</p>

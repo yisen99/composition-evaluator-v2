@@ -48,15 +48,18 @@ export default function HomePage() {
               <h2 className="mt-2 text-3xl font-semibold">老师操作路径</h2>
               <div className="mt-3 space-y-2 text-sm text-slate-700">
                 <p>第 1 步：老师账号注册/登录</p>
-                <p>第 2 步：创建班级并生成班级码</p>
-                <p>第 3 步：发布作文任务并查看批改详情</p>
+                <p>第 2 步：进入任务中心，优先处理待回复与临近截止任务</p>
+                <p>第 3 步：需要时进入班级与发布页创建班级和发布新任务</p>
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <a className="btn-ink text-sm" href="/login/teacher">
                   进入第 1 步（老师登录）
                 </a>
+                <a className="text-sm text-slate-700 underline" href="/teacher/tasks">
+                  已登录，直达任务中心
+                </a>
                 <a className="text-sm text-slate-700 underline" href="/teacher">
-                  已登录，直达教师工作台
+                  已登录，前往班级与发布
                 </a>
               </div>
             </div>
@@ -90,7 +93,7 @@ export default function HomePage() {
         </div>
       </section>
       <div className="mx-auto mt-6 max-w-3xl text-center text-xs text-slate-600">
-        已接入账号密码登录，短信模式仅用于学生侧联调。
+        已接入账号密码登录；短信模式支持学生，以及已绑定手机号的老师账号。
       </div>
     </main>
   );

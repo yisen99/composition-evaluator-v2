@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildApiPath,
+  bindWechatPhone,
   checkHealth,
   login,
   loginWithPassword,
@@ -9,7 +10,9 @@ import {
   createCompositionSubmission,
   createAssignment,
   createClass,
+  executeTeacherAssignmentBatchAction,
   createManualReviewReplyForTeacher,
+  getUxMetricsSummary,
   getAssignmentCommunicationThreads,
   getAssignmentGradingQueue,
   getManualReviewForSubmission,
@@ -19,6 +22,7 @@ import {
   listMyManualFeedbackReplies,
   listMyManualFeedback,
   markMyManualFeedbackRead,
+  getWechatAuthorizeUrl,
   listMySubmissions,
   publishManualReview,
   saveManualReviewDraft,
@@ -27,7 +31,10 @@ import {
   joinClass,
   listAssignments,
   listClasses,
-  runSubmissionReview
+  runSubmissionReview,
+  sendWechatBindCode,
+  trackUxEvent,
+  wechatCallback
 } from "@/lib/api/client";
 
 describe("frontend smoke", () => {
@@ -52,6 +59,15 @@ describe("frontend smoke", () => {
       "/api/backend/api/v1/health",
       expect.objectContaining({ headers: expect.objectContaining({ "Content-Type": "application/json" }) })
     );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("shows friendly error when network request fails", async () => {
+    const mockFetch = vi.fn().mockRejectedValue(new Error("fetch failed"));
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(checkHealth()).rejects.toThrow("网络连接异常，请稍后重试。");
 
     vi.unstubAllGlobals();
   });
@@ -977,6 +993,59 @@ describe("frontend smoke", () => {
     vi.unstubAllGlobals();
   });
 
+  it("maps register invalid password error object to friendly chinese message", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ detail: { code: "REGISTER_INVALID_PASSWORD", reason: "Password should be at least 8 characters" } }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(
+      registerAccount({
+        email: "teacher@example.com",
+        password: "1234567",
+        role: "teacher",
+        display_name: "账号老师"
+      })
+    ).rejects.toThrow("密码不符合要求，请至少输入 8 位字符。");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("maps invalid email validation message to friendly chinese message", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          detail: [
+            {
+              type: "value_error",
+              loc: ["body", "email"],
+              msg: "value is not a valid email address: An email address must have an @-sign."
+            }
+          ]
+        }),
+        {
+          status: 422,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    await expect(
+      registerAccount({
+        email: "bad-email",
+        password: "SecurePass123!",
+        role: "teacher",
+        display_name: "账号老师"
+      })
+    ).rejects.toThrow("邮箱格式不正确，请检查后重试。");
+
+    vi.unstubAllGlobals();
+  });
+
   it("maps teacher sms disabled error to friendly chinese message", async () => {
     const mockFetch = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ detail: "Teacher SMS signup is disabled" }), {
@@ -992,7 +1061,7 @@ describe("frontend smoke", () => {
         code: "123456",
         display_name: "王老师"
       })
-    ).rejects.toThrow("老师账号不支持短信注册，请使用邮箱密码注册/登录。");
+    ).rejects.toThrow("当前手机号未绑定老师账号，请先使用邮箱密码登录。");
 
     vi.unstubAllGlobals();
   });
@@ -1041,7 +1110,76 @@ describe("frontend smoke", () => {
     const mockFetch = vi
       .fn()
       .mockResolvedValueOnce(
-        new Response(JSON.stringify({ access_token: "jwt-token", token_type: "bearer" }), {
+        new Response(
+          JSON.stringify({
+            access_token: "jwt-token",
+            refresh_token: "refresh-token",
+            user: {
+              id: "user-1",
+              role: "teacher",
+              phone: "13800138000",
+              display_name: "账号老师"
+            }
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }
+        )
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await loginWithPassword("teacher@example.com", "SecurePass123!");
+    expect(data.access_token).toBe("jwt-token");
+    expect(data.refresh_token).toBe("refresh-token");
+    expect(data.user.role).toBe("teacher");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/auth/password-login",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ email: "teacher@example.com", password: "SecurePass123!" })
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches wechat authorize url via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ authorization_url: "https://open.weixin.qq.com/connect/qrconnect?foo=bar", state: "state-token" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await getWechatAuthorizeUrl("student", "/student");
+    expect(data.state).toBe("state-token");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/auth/wechat/authorize?role=student&next=%2Fstudent",
+      expect.objectContaining({ method: "GET" })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("handles wechat callback and bind api via proxy api", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            role: "student",
+            next_path: "/student",
+            need_bind_phone: true,
+            bind_ticket: "ticket-1",
+            bind_expires_in: 600
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ request_id: "req-1", expires_in: 300 }), {
           status: 200,
           headers: { "Content-Type": "application/json" }
         })
@@ -1049,39 +1187,152 @@ describe("frontend smoke", () => {
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
-            id: "user-1",
-            email: "teacher@example.com",
-            role: "teacher",
-            display_name: "账号老师",
-            phone: "13800138000",
-            is_active: true,
-            is_superuser: false,
-            is_verified: false
+            access_token: "access-1",
+            refresh_token: "refresh-1",
+            user: {
+              id: "user-1",
+              role: "student",
+              phone: "13800138000",
+              display_name: "微信学生"
+            }
           }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         )
       );
     vi.stubGlobal("fetch", mockFetch);
 
-    const data = await loginWithPassword("teacher@example.com", "SecurePass123!");
-    expect(data.access_token).toBe("jwt-token");
-    expect(data.user.role).toBe("teacher");
+    const callbackData = await wechatCallback("code-1", "state-1");
+    expect(callbackData.need_bind_phone).toBe(true);
     expect(mockFetch).toHaveBeenNthCalledWith(
       1,
-      "/api/backend/api/v1/auth/jwt/login",
-      expect.objectContaining({
-        method: "POST"
-      })
+      "/api/backend/api/v1/auth/wechat/callback?code=code-1&state=state-1",
+      expect.objectContaining({ method: "GET" })
     );
+
+    const sendCodeData = await sendWechatBindCode({ bind_ticket: "ticket-1", phone: "13800138000" });
+    expect(sendCodeData.request_id).toBe("req-1");
     expect(mockFetch).toHaveBeenNthCalledWith(
       2,
-      "/api/backend/api/v1/auth/me",
+      "/api/backend/api/v1/auth/wechat/send-bind-code",
       expect.objectContaining({
-        method: "GET",
-        headers: expect.objectContaining({ Authorization: "Bearer jwt-token" })
+        method: "POST",
+        body: JSON.stringify({ bind_ticket: "ticket-1", phone: "13800138000" })
       })
     );
 
+    const bindData = await bindWechatPhone({
+      bind_ticket: "ticket-1",
+      phone: "13800138000",
+      code: "123456",
+      display_name: "微信学生"
+    });
+    expect(bindData.user.role).toBe("student");
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      3,
+      "/api/backend/api/v1/auth/wechat/bind-phone",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          bind_ticket: "ticket-1",
+          phone: "13800138000",
+          code: "123456",
+          display_name: "微信学生"
+        })
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("executes teacher task-center batch action via proxy api", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          action: "publish_reminder",
+          total: 2,
+          succeeded: 2,
+          failed: 0,
+          workflow_assignment_ids: [],
+          results: [
+            { assignment_id: "asg-1", status: "success", detail: "ok", reminder_target_count: 1 },
+            { assignment_id: "asg-2", status: "success", detail: "ok", reminder_target_count: 0 }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const payload = {
+      assignment_ids: ["asg-1", "asg-2"],
+      action: "publish_reminder" as const
+    };
+    const data = await executeTeacherAssignmentBatchAction(payload);
+    expect(data.succeeded).toBe(2);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/assignments/batch/actions",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(payload)
+      })
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("tracks ux event and fetches ux summary via proxy api", async () => {
+    const mockFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            event_id: "evt-1",
+            created_at: "2026-02-20T00:00:00Z"
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            days: 7,
+            total_events: 11,
+            active_user_count: 3,
+            teacher_task_center_view_count: 5,
+            teacher_batch_action_count: 2,
+            student_todo_click_count: 4,
+            event_breakdown: [{ event_name: "teacher_task_center_view", count: 5 }]
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const eventPayload = {
+      event_name: "teacher_task_center_view",
+      event_category: "page_view",
+      page: "/teacher/tasks",
+      properties: { source: "test" }
+    };
+    const tracked = await trackUxEvent(eventPayload);
+    expect(tracked.event_id).toBe("evt-1");
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/backend/api/v1/observability/events",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(eventPayload)
+      })
+    );
+
+    const summary = await getUxMetricsSummary(7);
+    expect(summary.teacher_task_center_view_count).toBe(5);
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      "/api/backend/api/v1/observability/summary?days=7",
+      expect.objectContaining({
+        method: "GET"
+      })
+    );
     vi.unstubAllGlobals();
   });
 });

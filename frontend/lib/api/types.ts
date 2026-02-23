@@ -51,6 +51,40 @@ export type LoginResponse = {
   user: UserProfile;
 };
 
+export type RefreshTokenRequest = {
+  refresh_token: string;
+};
+
+export type WechatAuthorizeResponse = {
+  authorization_url: string;
+  state: string;
+};
+
+export type WechatAuthPayload = {
+  role: "teacher" | "student";
+  next_path?: string | null;
+  need_bind_phone: boolean;
+  bind_ticket?: string | null;
+  bind_expires_in?: number | null;
+  wechat_nickname?: string | null;
+  wechat_avatar_url?: string | null;
+  access_token?: string | null;
+  refresh_token?: string | null;
+  user?: UserProfile | null;
+};
+
+export type WechatBindSendCodeRequest = {
+  bind_ticket: string;
+  phone: string;
+};
+
+export type WechatBindPhoneRequest = {
+  bind_ticket: string;
+  phone: string;
+  code: string;
+  display_name?: string;
+};
+
 export type GradeBand = "primary" | "junior";
 
 export type CreateClassRequest = {
@@ -100,6 +134,36 @@ export type AssignmentListItem = {
   prompt: string;
   due_at?: string | null;
   status: string;
+};
+
+export type TeacherAssignmentBatchAction = "enter_workflow" | "publish_reminder" | "advance_status";
+export type TeacherAssignmentTargetStatus = "published" | "closed";
+
+export type TeacherAssignmentBatchActionRequest = {
+  assignment_ids: string[];
+  action: TeacherAssignmentBatchAction;
+  target_status?: TeacherAssignmentTargetStatus;
+};
+
+export type TeacherAssignmentBatchActionResultItem = {
+  assignment_id: string;
+  title?: string | null;
+  class_id?: string | null;
+  status: "success" | "failed";
+  detail: string;
+  detail_path?: string | null;
+  before_status?: string | null;
+  after_status?: string | null;
+  reminder_target_count?: number | null;
+};
+
+export type TeacherAssignmentBatchActionResponse = {
+  action: TeacherAssignmentBatchAction;
+  total: number;
+  succeeded: number;
+  failed: number;
+  workflow_assignment_ids: string[];
+  results: TeacherAssignmentBatchActionResultItem[];
 };
 
 export type SubmissionContentType = "text" | "image" | "document";
@@ -432,4 +496,31 @@ export type StudentProgressResponse = {
   score_delta_from_first?: number | null;
   trajectory: StudentProgressPoint[];
   submissions: StudentProgressSubmissionItem[];
+};
+
+export type UxEventTrackRequest = {
+  event_name: string;
+  event_category: string;
+  page?: string;
+  properties?: Record<string, unknown>;
+};
+
+export type UxEventTrackResponse = {
+  event_id: string;
+  created_at: string;
+};
+
+export type UxEventMetricItem = {
+  event_name: string;
+  count: number;
+};
+
+export type UxMetricsSummaryResponse = {
+  days: number;
+  total_events: number;
+  active_user_count: number;
+  teacher_task_center_view_count: number;
+  teacher_batch_action_count: number;
+  student_todo_click_count: number;
+  event_breakdown: UxEventMetricItem[];
 };

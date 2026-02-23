@@ -20,15 +20,25 @@ async function proxy(request: NextRequest, pathSegments: string[]): Promise<Next
     body: requestBody
   };
 
-  const response = await fetch(targetUrl, init);
-  const responseBody = await response.text();
+  try {
+    const response = await fetch(targetUrl, init);
+    const responseBody = await response.text();
 
-  return new NextResponse(responseBody, {
-    status: response.status,
-    headers: {
-      "Content-Type": response.headers.get("content-type") ?? "application/json"
-    }
-  });
+    return new NextResponse(responseBody, {
+      status: response.status,
+      headers: {
+        "Content-Type": response.headers.get("content-type") ?? "application/json"
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Upstream request failed";
+    return NextResponse.json(
+      {
+        detail: `Upstream service unavailable: ${message}`
+      },
+      { status: 502 }
+    );
+  }
 }
 
 type RouteContext = {

@@ -1,7 +1,7 @@
 export type AuthRole = "teacher" | "student";
 
 export function defaultWorkspaceByRole(role: AuthRole): string {
-  return role === "teacher" ? "/teacher" : "/student";
+  return role === "teacher" ? "/teacher/tasks" : "/student";
 }
 
 export function sanitizeNextPath(raw: string | null | undefined): string | null {

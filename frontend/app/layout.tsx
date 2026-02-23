@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { TopNav } from "@/components/top-nav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,7 +10,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>
+        <TopNav />
+        <div className="pt-16">{children}</div>
+      </body>
     </html>
   );
 }

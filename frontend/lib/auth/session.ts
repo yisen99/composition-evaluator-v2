@@ -8,6 +8,7 @@ import {
 
 export type AuthSession = LoginResponse;
 export type AuthRole = AuthSession["user"]["role"];
+const FALLBACK_ACCESS_TOKEN_EXPIRE_MINUTES = Number(process.env.NEXT_PUBLIC_ACCESS_TOKEN_EXPIRE_MINUTES || "60");
 
 function parseJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split(".");
@@ -58,13 +59,36 @@ function clearAuthExpiresCookie(): void {
   document.cookie = `${AUTH_EXPIRES_AT_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
 }
 
+function readAuthExpiresCookie(): number | null {
+  const key = `${AUTH_EXPIRES_AT_COOKIE_KEY}=`;
+  const cookie = document.cookie
+    .split(";")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith(key));
+  if (!cookie) {
+    return null;
+  }
+  const parsed = Number(cookie.slice(key.length));
+  return Number.isFinite(parsed) ? Math.floor(parsed) : null;
+}
+
+function fallbackTokenExpFromNow(): number {
+  return Math.floor(Date.now() / 1000) + Math.max(1, FALLBACK_ACCESS_TOKEN_EXPIRE_MINUTES) * 60;
+}
+
 function syncAuthCookies(session: AuthSession): void {
   setAuthRoleCookie(session.user.role);
   const tokenExp = readAccessTokenExp(session);
   if (tokenExp) {
     setAuthExpiresCookie(tokenExp);
   } else {
-    clearAuthExpiresCookie();
+    const cookieExp = readAuthExpiresCookie();
+    const now = Math.floor(Date.now() / 1000);
+    if (cookieExp && cookieExp > now) {
+      setAuthExpiresCookie(cookieExp);
+    } else {
+      setAuthExpiresCookie(fallbackTokenExpFromNow());
+    }
   }
 }
 
@@ -78,7 +102,7 @@ export function getAuthSession(): AuthSession | null {
   }
   try {
     const session = JSON.parse(raw) as AuthSession;
-    const tokenExp = readAccessTokenExp(session);
+    const tokenExp = readAccessTokenExp(session) ?? readAuthExpiresCookie();
     if (tokenExp && tokenExp <= Math.floor(Date.now() / 1000)) {
       clearAuthSession();
       return null;
