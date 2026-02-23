@@ -35,7 +35,7 @@ const SMS_RESEND_SECONDS = 60;
 
 export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthPageProps) {
   const router = useRouter();
-  const [mode, setMode] = useState<"sms" | "password">("password");
+  const [mode, setMode] = useState<"sms" | "password">("sms");
   const [passwordMode, setPasswordMode] = useState<"login" | "register">("login");
 
   const [smsPhone, setSmsPhone] = useState("");
@@ -57,6 +57,7 @@ export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthP
   const [wechatRedirecting, setWechatRedirecting] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [activeRole, setActiveRole] = useState<AuthRole | null>(null);
+  const [activeRoles, setActiveRoles] = useState<AuthRole[]>([]);
   const [activeDisplayName, setActiveDisplayName] = useState("");
   const [smsCooldownSeconds, setSmsCooldownSeconds] = useState(0);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<RoleAuthField, string>>>({});
@@ -68,7 +69,8 @@ export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthP
   const activeWorkspacePath = activeRole ? defaultWorkspaceByRole(activeRole) : "/student";
   const activeRoleLabel = activeRole === "teacher" ? "老师" : "学生";
   const oppositeRoleLinkPath = withNextPath(oppositeRolePath, requestedNext);
-  const isRoleMismatch = Boolean(activeRole && activeRole !== role);
+  const canUseCurrentRolePage = activeRoles.includes(role);
+  const isRoleMismatch = Boolean(activeRole && activeRole !== role && !canUseCurrentRolePage);
   const smsTip = useMemo(() => {
     if (!allowSms) {
       return "当前页面仅支持账号密码登录。";
@@ -200,6 +202,7 @@ export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthP
       return;
     }
     setActiveRole(session.user.role);
+    setActiveRoles(session.user.available_roles);
     setActiveDisplayName(session.user.display_name);
   }, []);
 
@@ -222,6 +225,7 @@ export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthP
   const onLogoutCurrentSession = () => {
     clearAuthSession();
     setActiveRole(null);
+    setActiveRoles([]);
     setActiveDisplayName("");
     setToast({ type: "ok", message: "已退出当前账号，请继续完成登录。" });
   };
@@ -356,11 +360,15 @@ export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthP
   };
 
   return (
-    <main className="mx-auto min-h-screen max-w-4xl p-6 md:p-10">
-      <section className="poster-shell p-6 md:p-10">
+    <main className="mx-auto min-h-screen max-w-5xl p-4 md:p-10">
+      <section className="mx-auto max-w-3xl overflow-hidden rounded-[32px] border border-slate-200 bg-white/90 shadow-[0_24px_64px_rgba(30,41,59,0.14)] backdrop-blur-sm">
+        <div className="border-b border-slate-200/80 px-6 py-5 text-center text-lg font-semibold text-slate-800 md:px-10">
+          语文作文批改协同台
+        </div>
+        <div className="space-y-5 bg-slate-50/60 px-6 py-8 md:px-10 md:py-10">
         {activeRole ? (
           <div
-            className={`relative z-10 mb-4 rounded-xl border px-4 py-3 text-sm ${
+            className={`rounded-xl border px-4 py-3 text-sm ${
               activeRole === role
                 ? "border-emerald-700/35 bg-emerald-50 text-emerald-900"
                 : "border-amber-700/35 bg-amber-50 text-amber-900"
@@ -380,6 +388,20 @@ export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthP
                   </button>
                 </div>
               </div>
+            ) : canUseCurrentRolePage ? (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p>
+                  当前活跃身份为{activeRoleLabel}，账号同时具备{roleLabel}权限。可在顶部导航切换角色后进入{roleLabel}工作台。
+                </p>
+                <div className="flex gap-3">
+                  <a className="underline" href={activeWorkspacePath}>
+                    返回当前工作台
+                  </a>
+                  <a className="underline" href="/">
+                    返回首页切换
+                  </a>
+                </div>
+              </div>
             ) : (
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p>当前登录身份为{activeRoleLabel}，与此页面不一致。请先退出后再切换登录。</p>
@@ -396,66 +418,70 @@ export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthP
           </div>
         ) : null}
 
-        <div className="relative z-10 grid gap-6 md:grid-cols-2">
-          <div>
-            <span className="seal-chip">真实登录态</span>
-            <h1 className="poster-title mt-4 text-4xl font-bold">{roleLabel}账号登录</h1>
-            <p className="mt-3 text-sm text-slate-700">
-              账号模式字段对齐真实接口：注册使用 `email/password/role/display_name/phone`，密码登录使用
-              `email+password`，并返回完整登录会话。
-            </p>
-            <div className="mt-4 rounded-xl border border-amber-700/30 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+        <div className="grid gap-6">
+          <div className="text-center">
+            <div className="mx-auto inline-flex h-24 w-24 items-center justify-center rounded-[28px] bg-gradient-to-br from-indigo-600 to-blue-600 text-4xl text-white shadow-[0_14px_28px_rgba(59,130,246,0.3)]">
+              书
+            </div>
+            <h1 className="mt-5 text-5xl font-bold tracking-tight text-slate-900">欢迎回来</h1>
+            <p className="mt-2 text-lg text-slate-500">请登录您的语文作文协同台账号</p>
+            <div className="mx-auto mt-4 max-w-xl rounded-xl border border-amber-700/30 bg-amber-50 px-4 py-3 text-xs text-amber-900 text-left">
               {smsTip}
             </div>
-            <button className="btn-ink mt-4 text-sm" type="button" onClick={onWechatLogin} disabled={wechatRedirecting}>
-              {wechatRedirecting ? "正在跳转微信..." : `微信登录（${roleLabel}）`}
-            </button>
-            <div className="mt-4 grid gap-2 text-xs text-slate-700">
-              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">第 1 步：确认当前是{roleLabel}身份</p>
-              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">
-                第 2 步：完成{roleLabel}账号注册或登录
-              </p>
-              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">第 3 步：进入{roleLabel}工作台开始操作</p>
-            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white px-5 py-5 md:px-7 md:py-6">
             {allowSms ? (
-              <div className="mt-4 flex gap-2">
+              <div className="mb-4 flex flex-wrap items-center gap-5 border-b border-slate-200">
                 <button
-                  className={`rounded-md px-3 py-1 text-sm ${mode === "password" ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-800"}`}
-                  onClick={() => setMode("password")}
-                  type="button"
-                >
-                  账号密码
-                </button>
-                <button
-                  className={`rounded-md px-3 py-1 text-sm ${mode === "sms" ? "bg-slate-900 text-white" : "bg-slate-200 text-slate-800"}`}
+                  className={`pb-3 text-base font-semibold ${
+                    mode === "sms" ? "border-b-4 border-indigo-600 text-indigo-600" : "text-slate-400"
+                  }`}
                   onClick={() => setMode("sms")}
                   type="button"
                 >
-                  短信验证码
+                  手机登录
+                </button>
+                <button
+                  className={`pb-3 text-base font-semibold ${
+                    mode === "password" ? "border-b-4 border-indigo-600 text-indigo-600" : "text-slate-400"
+                  }`}
+                  onClick={() => setMode("password")}
+                  type="button"
+                >
+                  密码登录
+                </button>
+                <button
+                  className="pb-3 text-base font-semibold text-slate-400 hover:text-indigo-600"
+                  onClick={onWechatLogin}
+                  type="button"
+                  disabled={wechatRedirecting}
+                >
+                  {wechatRedirecting ? "跳转中..." : "微信登录"}
                 </button>
               </div>
             ) : null}
           </div>
 
           {isRoleMismatch ? (
-            <div className="paper-card flex flex-col gap-3 p-5">
+            <div className="rounded-2xl border border-amber-700/35 bg-amber-50 px-4 py-4 text-sm text-amber-900">
               {renderInlineToast()}
-              <p className="text-sm text-slate-700">
+              <p>
                 检测到你当前已登录为{activeRoleLabel}账号（{activeDisplayName || "未命名用户"}）。
               </p>
-              <p className="text-sm text-slate-700">为避免权限混淆，请先退出当前账号，再使用{roleLabel}入口登录。</p>
-              <a className="btn-seal text-center text-sm" href={activeWorkspacePath}>
+              <p className="mt-1">当前账号无{roleLabel}权限，请退出后使用正确入口登录。</p>
+              <a className="btn-seal mt-3 inline-block text-center text-sm" href={activeWorkspacePath}>
                 返回当前工作台
               </a>
               <button className="btn-ink text-sm" type="button" onClick={onLogoutCurrentSession}>
                 退出当前账号并切换
               </button>
-              <a href="/" className="text-center text-sm text-slate-700 underline">
+              <a href="/" className="block text-center text-sm text-slate-700 underline">
                 返回首页
               </a>
             </div>
           ) : mode === "password" || !allowSms ? (
-            <form className="paper-card flex flex-col gap-3 p-5" onSubmit={onPasswordLogin}>
+            <form className="rounded-2xl border border-slate-200 bg-white p-5" onSubmit={onPasswordLogin}>
               {renderInlineToast()}
               <div className="flex gap-2">
                 <button
@@ -618,7 +644,7 @@ export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthP
               </a>
             </form>
           ) : (
-            <form className="paper-card flex flex-col gap-3 p-5" onSubmit={onSmsLogin}>
+            <form className="rounded-2xl border border-slate-200 bg-white p-5" onSubmit={onSmsLogin}>
               {renderInlineToast()}
               <div>
                 <p className="label">手机号</p>
@@ -662,10 +688,19 @@ export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthP
                 {fieldErrors.smsCode ? <p className="mt-1 text-xs text-rose-700">{fieldErrors.smsCode}</p> : null}
               </div>
 
-              <button className="btn-ink text-sm" type="button" onClick={onSendCode} disabled={sendingCode || smsCooldownSeconds > 0}>
+              <button
+                className="h-12 rounded-xl border border-slate-200 bg-slate-100 text-sm font-semibold text-slate-600 transition hover:bg-slate-200"
+                type="button"
+                onClick={onSendCode}
+                disabled={sendingCode || smsCooldownSeconds > 0}
+              >
                 {sendingCode ? "发送中..." : smsCooldownSeconds > 0 ? `重新发送(${smsCooldownSeconds}s)` : "发送验证码"}
               </button>
-              <button className="btn-seal text-sm" type="submit" disabled={loggingIn}>
+              <button
+                className="h-12 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-lg font-semibold text-white shadow-[0_12px_26px_rgba(79,70,229,0.35)]"
+                type="submit"
+                disabled={loggingIn}
+              >
                 {loggingIn ? "登录中..." : "登录并进入工作台"}
               </button>
               <a href={oppositeRoleLinkPath} className="mt-1 text-center text-sm text-slate-700 underline">
@@ -677,7 +712,10 @@ export function RoleAuthPage({ role, allowSms, requestedNext = null }: RoleAuthP
             </form>
           )}
         </div>
-
+        <p className="text-center text-sm text-slate-500">
+          {mode === "sms" && role === "student" ? "未注册手机号验证后将自动创建账号" : "首次登录建议先使用邮箱密码模式"}
+        </p>
+        </div>
       </section>
     </main>
   );

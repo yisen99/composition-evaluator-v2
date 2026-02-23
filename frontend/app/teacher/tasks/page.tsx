@@ -11,7 +11,7 @@ import {
   listClasses
 } from "@/lib/api/client";
 import { trackUxEventSafe } from "@/lib/analytics/tracker";
-import { getAuthSession } from "@/lib/auth/session";
+import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
 import type {
   AssignmentListItem,
   AssignmentGradingQueueResponse,
@@ -417,96 +417,87 @@ export default function TeacherTasksPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-7xl p-6 md:p-10">
-      <section className="poster-shell p-6 md:p-8">
-        <div className="relative z-10 flex flex-col gap-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <span className="seal-chip">教师任务中心</span>
-              <h1 className="poster-title mt-3 text-3xl font-bold md:text-4xl">按优先级处理任务，而不是按页面深度找任务</h1>
-            </div>
-            <div className="flex items-center gap-3 text-sm text-slate-700">
-              <Link className="underline" href="/teacher">
-                前往班级与发布
+    <main className="mx-auto min-h-screen max-w-[1500px] p-3 md:p-6">
+      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+        <aside className="flex h-fit flex-col rounded-3xl border border-slate-200 bg-white/90 shadow-[0_18px_48px_rgba(15,23,42,0.12)] lg:sticky lg:top-20">
+          <div className="border-b border-slate-200 px-6 py-6">
+            <p className="text-3xl font-bold text-indigo-600">作文协同台</p>
+          </div>
+          <nav className="space-y-2 p-4 text-base">
+            <Link className="block rounded-xl bg-indigo-50 px-4 py-3 font-semibold text-indigo-700" href="/teacher/tasks">
+              任务中心
+            </Link>
+            <Link className="block rounded-xl px-4 py-3 text-slate-600 transition hover:bg-slate-100" href="/teacher">
+              班级管理
+            </Link>
+            <a className="block rounded-xl px-4 py-3 text-slate-600 transition hover:bg-slate-100" href="#metrics">
+              运营看板
+            </a>
+          </nav>
+          <div className="mt-auto border-t border-slate-200 p-4">
+            <p className="text-sm font-semibold text-slate-800">{currentUser.display_name}</p>
+            <p className="text-sm text-slate-500">教师</p>
+            <button
+              className="mt-3 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-100"
+              onClick={() => {
+                clearAuthSession();
+                window.location.href = "/login/teacher";
+              }}
+              type="button"
+            >
+              退出登录
+            </button>
+          </div>
+        </aside>
+
+        <section className="space-y-4">
+          <div className="rounded-3xl border border-slate-200 bg-white/90 px-5 py-5 shadow-[0_16px_42px_rgba(15,23,42,0.1)] md:px-8">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h1 className="text-4xl font-bold tracking-tight text-slate-900">任务中心</h1>
+                <p className="mt-1 text-lg text-slate-500">管理您的作文任务与批改进度</p>
+              </div>
+              <Link
+                className="rounded-2xl bg-gradient-to-r from-indigo-600 to-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_22px_rgba(79,70,229,0.35)]"
+                href="/teacher"
+              >
+                + 发布新任务
               </Link>
-              <span>
-                {currentUser.display_name} · {currentUser.phone}
-              </span>
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-4">
-            <div className="paper-card p-4">
-              <p className="label">待老师回复任务</p>
-              <p className="mt-2 text-2xl font-semibold">{summary.pendingReplyTasks}</p>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500">P0 临近截止</p>
+              <p className="mt-2 text-4xl font-bold text-slate-900">{summary.dueSoonTasks}</p>
             </div>
-            <div className="paper-card p-4">
-              <p className="label">临近/已过截止</p>
-              <p className="mt-2 text-2xl font-semibold">{summary.dueSoonTasks}</p>
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500">P1 待回复反馈</p>
+              <p className="mt-2 text-4xl font-bold text-slate-900">{summary.pendingReplyTasks}</p>
             </div>
-            <div className="paper-card p-4">
-              <p className="label">有批改草稿</p>
-              <p className="mt-2 text-2xl font-semibold">{summary.draftTasks}</p>
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500">P2 待批改</p>
+              <p className="mt-2 text-4xl font-bold text-slate-900">{summary.draftTasks}</p>
             </div>
-            <div className="paper-card p-4">
-              <p className="label">暂无学生提交</p>
-              <p className="mt-2 text-2xl font-semibold">{summary.noSubmissionTasks}</p>
-            </div>
-          </div>
-
-          <div className="paper-card p-4">
-            <p className="label">验收指标观测（近7天）</p>
-            {uxMetrics ? (
-              <div className="mt-3 grid gap-3 text-sm md:grid-cols-4">
-                <div className="rounded-lg border border-slate-300/50 bg-white/70 p-3">
-                  <p className="text-xs text-slate-700">埋点总量</p>
-                  <p className="mt-1 text-xl font-semibold">{uxMetrics.total_events}</p>
-                </div>
-                <div className="rounded-lg border border-slate-300/50 bg-white/70 p-3">
-                  <p className="text-xs text-slate-700">任务中心访问</p>
-                  <p className="mt-1 text-xl font-semibold">{uxMetrics.teacher_task_center_view_count}</p>
-                </div>
-                <div className="rounded-lg border border-slate-300/50 bg-white/70 p-3">
-                  <p className="text-xs text-slate-700">批处理执行次数</p>
-                  <p className="mt-1 text-xl font-semibold">{uxMetrics.teacher_batch_action_count}</p>
-                </div>
-                <div className="rounded-lg border border-slate-300/50 bg-white/70 p-3">
-                  <p className="text-xs text-slate-700">学生待办点击</p>
-                  <p className="mt-1 text-xl font-semibold">{uxMetrics.student_todo_click_count}</p>
-                </div>
-              </div>
-            ) : (
-              <p className="mt-2 text-xs text-slate-600">当前暂无指标数据或埋点服务不可用。</p>
-            )}
-          </div>
-
-          <div className="paper-card p-4">
-            <p className="label">字段优先级（中国教师批改场景）</p>
-            <div className="mt-3 grid gap-3 text-sm md:grid-cols-3">
-              <div className="rounded-lg border border-rose-700/30 bg-rose-50/80 p-3">
-                <p className="font-semibold text-rose-900">P0：必须首屏可见</p>
-                <p className="mt-1 text-rose-900">待老师回复、截止时间、未发布批改数、学生是否已读</p>
-              </div>
-              <div className="rounded-lg border border-amber-700/30 bg-amber-50/80 p-3">
-                <p className="font-semibold text-amber-900">P1：辅助决策</p>
-                <p className="mt-1 text-amber-900">总提交数、草稿数、最近互动时间、任务状态</p>
-              </div>
-              <div className="rounded-lg border border-slate-400/30 bg-white/80 p-3">
-                <p className="font-semibold text-slate-800">P2：次级信息</p>
-                <p className="mt-1 text-slate-700">任务ID、班级ID、技术字段，默认不抢焦点</p>
-              </div>
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-semibold text-slate-500">无提交任务</p>
+              <p className="mt-2 text-4xl font-bold text-slate-900">{summary.noSubmissionTasks}</p>
             </div>
           </div>
 
-          <div className="paper-card p-4">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="grid gap-3 md:grid-cols-[1fr_220px_220px]">
               <input
-                className="field"
+                className="field rounded-xl border-slate-300 bg-white"
                 placeholder="搜索任务名或班级名"
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
               />
-              <select className="field" value={selectedClassId} onChange={(event) => setSelectedClassId(event.target.value)}>
+              <select
+                className="field rounded-xl border-slate-300 bg-white"
+                value={selectedClassId}
+                onChange={(event) => setSelectedClassId(event.target.value)}
+              >
                 <option value="">全部班级</option>
                 {classroomList.map((room) => (
                   <option key={room.class_id} value={room.class_id}>
@@ -514,7 +505,11 @@ export default function TeacherTasksPage() {
                   </option>
                 ))}
               </select>
-              <select className="field" value={focus} onChange={(event) => setFocus(event.target.value as FocusFilter)}>
+              <select
+                className="field rounded-xl border-slate-300 bg-white"
+                value={focus}
+                onChange={(event) => setFocus(event.target.value as FocusFilter)}
+              >
                 <option value="all">全部任务</option>
                 <option value="pending_reply">待老师回复</option>
                 <option value="draft">有手工草稿</option>
@@ -523,15 +518,16 @@ export default function TeacherTasksPage() {
                 <option value="done">已完成闭环</option>
               </select>
             </div>
-          </div>
-
-          <div className="paper-card p-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <button className="btn-seal px-3 py-1 text-xs" onClick={toggleSelectAll} type="button">
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600"
+                onClick={toggleSelectAll}
+                type="button"
+              >
                 {selectedAll ? "取消全选" : "全选当前筛选"}
               </button>
               <button
-                className="btn-ink px-3 py-1 text-xs"
+                className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white"
                 onClick={() => {
                   void runBatchAction("enter_workflow");
                 }}
@@ -541,17 +537,17 @@ export default function TeacherTasksPage() {
                 批量进入任务
               </button>
               <button
-                className="btn-seal px-3 py-1 text-xs"
+                className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white"
                 onClick={() => {
                   void runBatchAction("publish_reminder");
                 }}
                 type="button"
                 disabled={batchRunning}
               >
-                批量发布提醒
+                批量提醒
               </button>
               <select
-                className="field w-36 px-2 py-1 text-xs"
+                className="field h-9 w-36 rounded-lg border-slate-300 bg-white px-2 py-1 text-xs"
                 value={batchStatusTarget}
                 onChange={(event) => setBatchStatusTarget(event.target.value as TeacherAssignmentTargetStatus)}
                 disabled={batchRunning}
@@ -560,152 +556,115 @@ export default function TeacherTasksPage() {
                 <option value="published">推进为进行中</option>
               </select>
               <button
-                className="btn-seal px-3 py-1 text-xs"
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white"
                 onClick={() => {
                   void runBatchAction("advance_status");
                 }}
                 type="button"
                 disabled={batchRunning}
               >
-                批量状态推进
+                批量归档
               </button>
-              <span className="text-xs text-slate-700">已选 {selectedAssignmentIds.length} 项</span>
-              <span className="text-xs text-slate-600">跨任务批处理已启用：进入任务/发布提醒/状态推进。</span>
+              <span className="text-xs text-slate-500">已选 {selectedAssignmentIds.length} 项</span>
             </div>
             {batchToast ? (
-              <p className={`mt-2 text-xs ${batchToast.type === "ok" ? "text-emerald-900" : "text-rose-900"}`}>
+              <p className={`mt-2 text-xs ${batchToast.type === "ok" ? "text-emerald-700" : "text-rose-700"}`}>
                 {batchToast.message}
               </p>
             ) : null}
             {batchResult ? (
-              <div className="mt-2 rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">
-                <p className="text-xs text-slate-800">
-                  最近执行：{batchActionLabel(batchResult.action)} · 成功 {batchResult.succeeded} · 失败 {batchResult.failed}
+              <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs text-slate-700">
+                  最近执行：{batchActionLabel(batchResult.action)}，成功 {batchResult.succeeded}，失败 {batchResult.failed}
                 </p>
-                <ul className="mt-1 list-disc space-y-1 pl-4 text-xs text-slate-700">
-                  {batchResult.results.slice(0, 5).map((item) => (
-                    <li key={`${item.assignment_id}-${item.status}`}>
-                      {item.title || item.assignment_id}：{item.detail}
-                      {typeof item.reminder_target_count === "number" ? `（提醒目标 ${item.reminder_target_count} 人）` : ""}
-                      {item.before_status && item.after_status ? `（${item.before_status} -> ${item.after_status}）` : ""}
-                    </li>
-                  ))}
-                  {batchResult.results.length > 5 ? <li>其余 {batchResult.results.length - 5} 项已省略显示。</li> : null}
-                </ul>
               </div>
             ) : null}
           </div>
 
-          {loading ? <p className="text-sm text-slate-700">正在汇总任务优先级数据...</p> : null}
+          <div id="metrics" className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-sm font-semibold text-slate-700">近 7 天数据</p>
+            {uxMetrics ? (
+              <div className="mt-3 grid gap-3 text-sm md:grid-cols-4">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">埋点总量</p>
+                  <p className="mt-1 text-xl font-semibold">{uxMetrics.total_events}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">任务中心访问</p>
+                  <p className="mt-1 text-xl font-semibold">{uxMetrics.teacher_task_center_view_count}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">批处理次数</p>
+                  <p className="mt-1 text-xl font-semibold">{uxMetrics.teacher_batch_action_count}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">学生待办点击</p>
+                  <p className="mt-1 text-xl font-semibold">{uxMetrics.student_todo_click_count}</p>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">当前暂无指标数据或埋点服务不可用。</p>
+            )}
+          </div>
+
+          {loading ? <p className="text-sm text-slate-600">正在汇总任务优先级数据...</p> : null}
           {error ? (
             <div className="rounded-xl border border-rose-700/35 bg-rose-50 px-4 py-3 text-sm text-rose-900">
               加载失败：{error}
             </div>
           ) : null}
 
-          <div className="paper-card overflow-hidden">
-            <div className="hidden overflow-x-auto md:block">
-              <table className="min-w-full text-sm">
-                <thead className="bg-white/65 text-left text-xs text-slate-700">
-                  <tr>
-                    <th className="px-3 py-3">选择</th>
-                    <th className="px-3 py-3">任务</th>
-                    <th className="px-3 py-3">班级</th>
-                    <th className="px-3 py-3">截止</th>
-                    <th className="px-3 py-3">提交</th>
-                    <th className="px-3 py-3">待回复</th>
-                    <th className="px-3 py-3">待发布</th>
-                    <th className="px-3 py-3">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredRows.length === 0 ? (
-                    <tr>
-                      <td className="px-3 py-5 text-slate-600" colSpan={8}>
-                        当前筛选下暂无任务。
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredRows.map((row) => (
-                      <tr key={row.assignmentId} className="border-t border-slate-300/40 align-top">
-                        <td className="px-3 py-3">
-                          <input
-                            checked={selectedAssignmentIds.includes(row.assignmentId)}
-                            onChange={() => toggleSelectOne(row.assignmentId)}
-                            type="checkbox"
-                          />
-                        </td>
-                        <td className="px-3 py-3">
-                          <p className="font-semibold text-slate-900">{row.title}</p>
-                          <p className="mt-1 text-xs text-slate-600">任务ID：{row.assignmentId}</p>
-                          {row.queueLoadFailed ? (
-                            <p className="mt-1 text-xs text-amber-900">队列数据读取失败，展示为基础信息。</p>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-3">
-                          <p>{row.className}</p>
-                        </td>
-                        <td className="px-3 py-3">
-                          <DueBadge dueAt={row.dueAt} />
-                          <p className="mt-1 text-xs text-slate-600">{formatDateTime(row.dueAt)}</p>
-                        </td>
-                        <td className="px-3 py-3">{row.submissionsCount}</td>
-                        <td className="px-3 py-3">
-                          <span className={row.pendingTeacherReplyCount > 0 ? "font-semibold text-rose-800" : ""}>
-                            {row.pendingTeacherReplyCount}
-                          </span>
-                          {row.lastInteractionAt ? (
-                            <p className="mt-1 text-xs text-slate-600">最近互动：{formatDateTime(row.lastInteractionAt)}</p>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-3">
-                          <p>{row.unpublishedCount}</p>
-                          {row.manualDraftCount > 0 ? <p className="text-xs text-amber-900">草稿 {row.manualDraftCount}</p> : null}
-                        </td>
-                        <td className="px-3 py-3">
-                          <Link className="underline" href={`/teacher/assignments/${row.assignmentId}`}>
-                            进入批改详情
-                          </Link>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+          <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <h2 className="text-3xl font-bold text-slate-900">全部任务</h2>
+              <p className="text-sm text-slate-500">当前筛选：{filteredRows.length} 项</p>
             </div>
-
-            <ul className="space-y-2 p-3 md:hidden">
+            <ul className="divide-y divide-slate-200">
               {filteredRows.length === 0 ? (
-                <li className="text-sm text-slate-600">当前筛选下暂无任务。</li>
+                <li className="px-5 py-5 text-sm text-slate-500">当前筛选下暂无任务。</li>
               ) : (
                 filteredRows.map((row) => (
-                  <li key={row.assignmentId} className="rounded-lg border border-slate-300/50 bg-white/70 p-3 text-sm">
-                    <div className="flex items-start justify-between gap-3">
-                      <label className="flex items-center gap-2">
-                        <input
-                          checked={selectedAssignmentIds.includes(row.assignmentId)}
-                          onChange={() => toggleSelectOne(row.assignmentId)}
-                          type="checkbox"
-                        />
-                        <span className="font-semibold">{row.title}</span>
-                      </label>
-                      <DueBadge dueAt={row.dueAt} />
+                  <li key={row.assignmentId} className="px-5 py-4">
+                    <div className="grid gap-3 md:grid-cols-[28px_1fr_220px_180px] md:items-center">
+                      <input
+                        checked={selectedAssignmentIds.includes(row.assignmentId)}
+                        onChange={() => toggleSelectOne(row.assignmentId)}
+                        type="checkbox"
+                        className="h-4 w-4"
+                      />
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-2xl font-bold text-slate-900">{row.title}</p>
+                          <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                            {row.status}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-500">{row.className}</p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          提交进度 {row.manualPublishedCount}/{row.submissionsCount} · 待回复 {row.pendingTeacherReplyCount}
+                          {row.queueLoadFailed ? " · 队列信息读取失败" : ""}
+                        </p>
+                      </div>
+                      <div className="text-sm">
+                        <p className="text-xs text-slate-500">截止日期</p>
+                        <p className="mt-1 font-semibold text-slate-900">{row.dueAt ? formatDateTime(row.dueAt) : "未设置"}</p>
+                        <div className="mt-1">
+                          <DueBadge dueAt={row.dueAt} />
+                        </div>
+                      </div>
+                      <div className="text-sm md:text-right">
+                        <Link className="font-semibold text-indigo-600 hover:underline" href={`/teacher/assignments/${row.assignmentId}`}>
+                          进入批改详情
+                        </Link>
+                      </div>
                     </div>
-                    <p className="mt-1 text-xs text-slate-700">班级：{row.className}</p>
-                    <p className="mt-1 text-xs text-slate-700">
-                      提交 {row.submissionsCount} · 待回复 {row.pendingTeacherReplyCount} · 待发布 {row.unpublishedCount}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-600">截止：{formatDateTime(row.dueAt)}</p>
-                    <Link className="mt-2 inline-block text-xs underline" href={`/teacher/assignments/${row.assignmentId}`}>
-                      进入批改详情
-                    </Link>
                   </li>
                 ))
               )}
             </ul>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

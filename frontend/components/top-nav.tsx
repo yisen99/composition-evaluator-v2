@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
+import React, { useEffect, useMemo, useState } from "react";
+import { switchAuthRole } from "@/lib/api/client";
+import { defaultWorkspaceByRole } from "@/lib/auth/redirect";
+import { clearAuthSession, getAuthSession, saveAuthSession } from "@/lib/auth/session";
 import type { UserProfile } from "@/lib/api/types";
 
 type NavLink = {
@@ -21,6 +23,7 @@ function isActivePath(pathname: string, href: string): boolean {
 export function TopNav() {
   const pathname = usePathname();
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [switchingRole, setSwitchingRole] = useState<"teacher" | "student" | null>(null);
 
   useEffect(() => {
     const syncSession = () => {
@@ -60,6 +63,30 @@ export function TopNav() {
     ];
   }, [user]);
 
+  const switchableRole = useMemo(() => {
+    if (!user || user.available_roles.length <= 1) {
+      return null;
+    }
+    return user.available_roles.find((role) => role !== user.role) ?? null;
+  }, [user]);
+
+  const onSwitchRole = async () => {
+    if (!user || !switchableRole) {
+      return;
+    }
+    setSwitchingRole(switchableRole);
+    try {
+      const session = await switchAuthRole({ target_role: switchableRole });
+      saveAuthSession(session);
+      setUser(session.user);
+      window.location.href = defaultWorkspaceByRole(session.user.role);
+    } catch (error) {
+      window.alert(`角色切换失败：${(error as Error).message}`);
+    } finally {
+      setSwitchingRole(null);
+    }
+  };
+
   return (
     <header className="fixed inset-x-0 top-0 z-40 border-b border-[rgba(27,43,42,0.14)] bg-[rgba(246,240,228,0.85)] backdrop-blur-md">
       <div className="mx-auto flex h-16 w-full max-w-6xl items-center gap-2 px-3 md:px-8">
@@ -85,6 +112,18 @@ export function TopNav() {
               <span className="hidden md:inline">
                 {user.display_name} · {user.role === "teacher" ? "老师" : "学生"}
               </span>
+              {switchableRole ? (
+                <button
+                  className="rounded-md border border-indigo-400/60 px-2 py-1 text-xs text-indigo-700 transition hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={onSwitchRole}
+                  type="button"
+                  disabled={switchingRole !== null}
+                >
+                  {switchingRole
+                    ? "切换中..."
+                    : `切换到${switchableRole === "teacher" ? "老师" : "学生"}`}
+                </button>
+              ) : null}
               <button
                 className="rounded-md border border-slate-400/50 px-2 py-1 text-xs transition hover:bg-slate-100"
                 onClick={() => {

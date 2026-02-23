@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth import (
+    current_active_auth_user,
     get_user_manager,
     issue_access_token,
     issue_refresh_token,
@@ -20,18 +21,23 @@ from app.core.config import settings
 from app.db.deps import get_db
 from app.models import AuthAccount, User, WechatAccountLink, WechatBindSession
 from app.schemas.auth import (
+    AdminGrantRoleRequest,
+    AdminGrantRoleResponse,
+    AuthRolesResponse,
     LoginRequest,
     LoginResponse,
     PasswordLoginRequest,
     RefreshTokenRequest,
     SendCodeRequest,
     SendCodeResponse,
+    SwitchRoleRequest,
     UserProfile,
     WechatAuthPayload,
     WechatAuthorizeResponse,
     WechatBindPhoneRequest,
     WechatBindSendCodeRequest,
 )
+from app.services.account_roles import ensure_account_role, list_account_roles, normalize_role, resolve_active_role
 from app.services.auth import AuthCodeError, create_verification_code, normalize_phone, verify_code
 from app.services.wechat_oauth import (
     WechatOAuthError,
@@ -94,44 +100,61 @@ def _ensure_auth_account_for_sms_user(
             phone=phone,
         )
         db.add(account)
+        ensure_account_role(
+            db,
+            auth_account_id=account.id,
+            role=account.role,
+        )
         return account
 
-    account.role = user.role
     account.display_name = user.display_name
     account.phone = phone
     account.is_active = True
     account.is_verified = True
+    ensure_account_role(
+        db,
+        auth_account_id=account.id,
+        role=account.role,
+    )
     return account
 
 
-def _resolve_phone_role_conflicts(
+def _resolve_phone_account_conflicts(
     db: Session,
     *,
     phone: str,
-    role: str,
 ) -> tuple[User | None, AuthAccount | None]:
     existing_user = db.scalar(select(User).where(User.phone == phone).limit(1))
     existing_account = db.scalar(select(AuthAccount).where(AuthAccount.phone == phone).limit(1))
 
-    if existing_user and existing_user.role != role:
+    if existing_user and existing_account and str(existing_account.id) != existing_user.id:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Phone already registered with another role",
-        )
-    if existing_account and existing_account.role != role:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Phone already registered with another role",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Phone already linked to another account",
         )
     return existing_user, existing_account
 
 
 async def _issue_login_response(
     *,
+    db: Session,
     user: User,
     account: AuthAccount,
     fallback_phone: str,
 ) -> LoginResponse:
+    active_role, available_roles = resolve_active_role(
+        db,
+        account=account,
+        preferred_role=user.role,
+    )
+    ensure_account_role(
+        db,
+        auth_account_id=account.id,
+        role=active_role,
+    )
+    if user.role != active_role:
+        user.role = active_role
+
     access_token = await issue_access_token(account)
     refresh_token = await issue_refresh_token(account)
     return LoginResponse(
@@ -139,7 +162,9 @@ async def _issue_login_response(
         refresh_token=refresh_token,
         user=UserProfile(
             id=user.id,
-            role=user.role,  # type: ignore[arg-type]
+            role=active_role,  # type: ignore[arg-type]
+            available_roles=available_roles,  # type: ignore[arg-type]
+            last_active_role=active_role,  # type: ignore[arg-type]
             phone=user.phone or fallback_phone,
             display_name=user.display_name,
         ),
@@ -230,10 +255,9 @@ def send_code(payload: SendCodeRequest, db: Session = Depends(get_db)) -> SendCo
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid phone format") from exc
 
-    existing_user, existing_account = _resolve_phone_role_conflicts(
+    existing_user, existing_account = _resolve_phone_account_conflicts(
         db,
         phone=normalized_phone,
-        role=payload.role_hint,
     )
 
     if payload.role_hint == "teacher" and not existing_user and not existing_account:
@@ -261,10 +285,8 @@ async def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginRe
     user = db.scalar(select(User).where(User.phone == verification.phone).limit(1))
     account = db.scalar(select(AuthAccount).where(AuthAccount.phone == verification.phone).limit(1))
 
-    if user and user.role != verification.role_hint:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone role mismatch")
-    if account and account.role != verification.role_hint:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone role mismatch")
+    if user and account and str(account.id) != user.id:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Phone already linked to another account")
 
     if user is None:
         if verification.role_hint == "teacher" and account is None:
@@ -284,7 +306,7 @@ async def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginRe
                 id=str(uuid4()),
                 role="student",
                 phone=verification.phone,
-                display_name=f"{verification.role_hint}-{verification.phone[-4:]}",
+                display_name=f"student-{verification.phone[-4:]}",
             )
         db.add(user)
 
@@ -293,12 +315,23 @@ async def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginRe
 
     user.phone = verification.phone
     account = _ensure_auth_account_for_sms_user(db, user=user, phone=verification.phone)
+    active_role, _ = resolve_active_role(
+        db,
+        account=account,
+        preferred_role=user.role,
+    )
+    user.role = active_role
 
     db.commit()
     db.refresh(user)
     db.refresh(account)
 
-    return await _issue_login_response(user=user, account=account, fallback_phone=verification.phone)
+    return await _issue_login_response(
+        db=db,
+        user=user,
+        account=account,
+        fallback_phone=verification.phone,
+    )
 
 
 @router.post("/password-login", response_model=LoginResponse)
@@ -325,6 +358,7 @@ async def password_login(payload: PasswordLoginRequest, db: Session = Depends(ge
     db.refresh(account)
 
     return await _issue_login_response(
+        db=db,
         user=user,
         account=account,
         fallback_phone=account.phone or account.email,
@@ -347,9 +381,130 @@ async def refresh_login(
     await revoke_refresh_token(payload.refresh_token, account)
 
     return await _issue_login_response(
+        db=db,
         user=user,
         account=account,
         fallback_phone=account.phone or account.email,
+    )
+
+
+@router.get("/roles", response_model=AuthRolesResponse)
+def get_auth_roles(
+    current_auth_user: AuthAccount = Depends(current_active_auth_user),
+    db: Session = Depends(get_db),
+) -> AuthRolesResponse:
+    account = db.get(AuthAccount, current_auth_user.id)
+    if account is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive account")
+
+    user = sync_domain_user_from_account(db, account)
+    active_role, available_roles = resolve_active_role(
+        db,
+        account=account,
+        preferred_role=user.role,
+    )
+    if user.role != active_role:
+        user.role = active_role
+    db.commit()
+
+    return AuthRolesResponse(
+        active_role=active_role,  # type: ignore[arg-type]
+        available_roles=available_roles,  # type: ignore[arg-type]
+    )
+
+
+@router.post("/switch-role", response_model=LoginResponse)
+async def switch_auth_role(
+    payload: SwitchRoleRequest,
+    current_auth_user: AuthAccount = Depends(current_active_auth_user),
+    db: Session = Depends(get_db),
+) -> LoginResponse:
+    account = db.get(AuthAccount, current_auth_user.id)
+    if account is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive account")
+
+    target_role = normalize_role(payload.target_role)
+    available_roles = list_account_roles(
+        db,
+        auth_account_id=account.id,
+        fallback_role=account.role,
+    )
+    if target_role not in available_roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Role is not available for current account",
+        )
+
+    account.role = target_role
+    user = sync_domain_user_from_account(db, account)
+    if user.role != target_role:
+        user.role = target_role
+    db.commit()
+    db.refresh(account)
+    db.refresh(user)
+
+    return await _issue_login_response(
+        db=db,
+        user=user,
+        account=account,
+        fallback_phone=account.phone or account.email,
+    )
+
+
+@router.post("/admin/grant-role", response_model=AdminGrantRoleResponse)
+def admin_grant_role(
+    payload: AdminGrantRoleRequest,
+    current_auth_user: AuthAccount = Depends(current_active_auth_user),
+    db: Session = Depends(get_db),
+) -> AdminGrantRoleResponse:
+    if not current_auth_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required",
+        )
+
+    try:
+        normalized_phone = normalize_phone(payload.phone)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid phone format") from exc
+
+    account = db.scalar(
+        select(AuthAccount)
+        .where(AuthAccount.phone == normalized_phone)
+        .limit(1)
+    )
+    if account is None:
+        domain_user = db.scalar(
+            select(User)
+            .where(User.phone == normalized_phone)
+            .limit(1)
+        )
+        if domain_user is not None:
+            account = db.get(AuthAccount, _parse_user_uuid(domain_user.id))
+
+    if account is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found for phone")
+
+    domain_user = db.get(User, str(account.id))
+    preferred_role = domain_user.role if domain_user else account.role
+    ensure_account_role(
+        db,
+        auth_account_id=account.id,
+        role=payload.target_role,
+    )
+    active_role, available_roles = resolve_active_role(
+        db,
+        account=account,
+        preferred_role=preferred_role,
+    )
+    if domain_user and domain_user.role != active_role:
+        domain_user.role = active_role
+    db.commit()
+
+    return AdminGrantRoleResponse(
+        account_id=str(account.id),
+        active_role=active_role,  # type: ignore[arg-type]
+        available_roles=available_roles,  # type: ignore[arg-type]
     )
 
 
@@ -390,11 +545,18 @@ async def handle_wechat_callback(
     link = _get_wechat_link(db, unionid=profile.unionid, openid=profile.openid)
     if link:
         account = db.get(AuthAccount, link.auth_account_id)
-        if account and account.role != state_payload.role:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Wechat account role mismatch")
+        if account:
+            available_roles = list_account_roles(
+                db,
+                auth_account_id=account.id,
+                fallback_role=account.role,
+            )
+            if state_payload.role not in available_roles:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Wechat account role mismatch")
         if account and account.phone:
             user = sync_domain_user_from_account(db, account)
             login_payload = await _issue_login_response(
+                db=db,
                 user=user,
                 account=account,
                 fallback_phone=account.phone,
@@ -439,10 +601,9 @@ def send_wechat_bind_code(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid phone format") from exc
 
-    _resolve_phone_role_conflicts(
+    _resolve_phone_account_conflicts(
         db,
         phone=normalized_phone,
-        role=bind.role,
     )
 
     try:
@@ -470,14 +631,15 @@ async def bind_wechat_phone(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Wechat bind role mismatch")
 
     normalized_phone = verification.phone
-    existing_user, existing_account = _resolve_phone_role_conflicts(
+    existing_user, existing_account = _resolve_phone_account_conflicts(
         db,
         phone=normalized_phone,
-        role=bind.role,
     )
 
     account = existing_account
     if account is None:
+        if existing_user and existing_user.role != bind.role:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Wechat account role mismatch")
         account_id = _parse_user_uuid(existing_user.id) if existing_user else uuid4()
         email_identity = bind.unionid or bind.openid
         email = _build_wechat_email(email_identity, bind.role)
@@ -497,14 +659,25 @@ async def bind_wechat_phone(
             is_active=True,
             is_superuser=False,
             is_verified=True,
-            role=bind.role,
+            role=existing_user.role if existing_user else bind.role,
             display_name=display_name,
             phone=normalized_phone,
         )
         db.add(account)
+        ensure_account_role(
+            db,
+            auth_account_id=account.id,
+            role=account.role,
+        )
     else:
+        available_roles = list_account_roles(
+            db,
+            auth_account_id=account.id,
+            fallback_role=account.role,
+        )
+        if bind.role not in available_roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Wechat account role mismatch")
         desired_name = (payload.display_name or "").strip() or account.display_name or bind.nickname
-        account.role = bind.role
         account.display_name = desired_name or account.display_name
         account.phone = normalized_phone
         account.is_active = True
@@ -512,15 +685,24 @@ async def bind_wechat_phone(
 
     user = existing_user
     if user is None:
+        active_role, _ = resolve_active_role(
+            db,
+            account=account,
+        )
         user = User(
             id=str(account.id),
-            role=bind.role,
+            role=active_role,
             phone=normalized_phone,
             display_name=account.display_name,
         )
         db.add(user)
     else:
-        user.role = bind.role
+        active_role, _ = resolve_active_role(
+            db,
+            account=account,
+            preferred_role=user.role,
+        )
+        user.role = active_role
         user.phone = normalized_phone
         preferred_name = (payload.display_name or "").strip() or user.display_name or account.display_name
         user.display_name = preferred_name
@@ -573,4 +755,9 @@ async def bind_wechat_phone(
     db.refresh(account)
     db.refresh(user)
 
-    return await _issue_login_response(user=user, account=account, fallback_phone=normalized_phone)
+    return await _issue_login_response(
+        db=db,
+        user=user,
+        account=account,
+        fallback_phone=normalized_phone,
+    )

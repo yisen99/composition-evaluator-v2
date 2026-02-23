@@ -1,6 +1,8 @@
-#!/bin/bash
-# Quick command to auto-commit and push changes
-# Usage: ./git-auto-push.sh or add to your path as 'git-auto-push'
+#!/usr/bin/env bash
+# Quick command for major-change auto commit + push
+# Usage: ./git-auto-push.sh
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-"$SCRIPT_DIR/.git/hooks/auto-commit.sh"
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+"${script_dir}/.githooks/auto-major-commit-push.sh"

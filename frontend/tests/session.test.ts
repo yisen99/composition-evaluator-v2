@@ -14,6 +14,8 @@ function buildSession(role: "teacher" | "student", accessToken?: string): LoginR
     user: {
       id: "user-1",
       role,
+      available_roles: [role],
+      last_active_role: role,
       phone: "13800138000",
       display_name: role === "teacher" ? "王老师" : "小明"
     }
@@ -44,6 +46,28 @@ describe("auth session storage", () => {
     expect(session?.user.role).toBe("student");
     expect(document.cookie).toContain(`${AUTH_ROLE_COOKIE_KEY}=student`);
     expect(document.cookie).toContain(`${AUTH_EXPIRES_AT_COOKIE_KEY}=`);
+  });
+
+  it("backfills role fields for legacy session payloads", () => {
+    const futureToken = buildJwt({ exp: Math.floor(Date.now() / 1000) + 3600 });
+    window.localStorage.setItem(
+      AUTH_SESSION_KEY,
+      JSON.stringify({
+        access_token: futureToken,
+        refresh_token: "refresh-token",
+        user: {
+          id: "user-legacy",
+          role: "student",
+          phone: "13800138001",
+          display_name: "旧版学生"
+        }
+      })
+    );
+
+    const session = getAuthSession();
+
+    expect(session?.user.available_roles).toEqual(["student"]);
+    expect(session?.user.last_active_role).toBe("student");
   });
 
   it("invalidates expired session token and clears storage", () => {

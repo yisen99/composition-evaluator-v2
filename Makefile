@@ -1,4 +1,4 @@
-.PHONY: up down logs compose-config backend-test frontend-test db-upgrade db-downgrade db-stamp-head db-verify-rollback
+.PHONY: up down logs compose-config backend-test frontend-test db-upgrade db-downgrade db-stamp-head db-verify-rollback install-hooks
 
 up:
 	docker compose up --build
@@ -29,3 +29,6 @@ db-stamp-head:
 
 db-verify-rollback:
 	./backend/scripts/db_verify_rollback.sh
+
+install-hooks:
+	./setup-git-hooks.sh

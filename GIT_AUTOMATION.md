@@ -1,97 +1,78 @@
-# Git 自动提交配置说明
+# Git Major-Change Automation
 
-## 📋 概述
+## What is enabled
 
-本项目已配置自动 Git hooks,可以在关键改动后自动提交到 GitHub。
+This repository uses versioned hooks under `.githooks`.
 
-## 🚀 功能
+- `post-commit`: automatically pushes to GitHub when the commit is considered a **major change**.
+- `auto-major-commit-push.sh`: manually create an auto commit + push for major uncommitted changes.
 
-### 1. 自动推送 (Post-Commit Hook)
+## Major-change rule
 
-每次在 `main` 分支上提交后,会自动推送到 GitHub:
+A change is treated as major if either condition is true:
+
+- changed files `>= 8`
+- changed lines (insertions + deletions) `>= 300`
+
+You can override thresholds with environment variables:
+
+- `MAJOR_CHANGE_MIN_FILES`
+- `MAJOR_CHANGE_MIN_LINES`
+
+## Install hooks
+
+Run once in this repo:
 
 ```bash
-git commit -m "your message"
-# 自动执行: git push origin main
+./setup-git-hooks.sh
 ```
 
-### 2. 智能自动提交脚本
-
-运行自动提交脚本,它会:
-- ✅ 检测改动文件
-- ✅ 根据文件类型自动生成 commit message
-- ✅ 自动提交并推送
-
-**使用方法:**
+or:
 
 ```bash
-# 方式 1: 使用脚本
+make install-hooks
+```
+
+This sets:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+## How it works
+
+1. You run `git commit`.
+2. `.githooks/post-commit` checks HEAD shortstat.
+3. If major, it runs:
+
+```bash
+git push origin <current-branch>
+```
+
+If push fails, the hook prints a manual retry command.
+
+## Manual major auto commit + push
+
+```bash
 ./git-auto-push.sh
-
-# 方式 2: 直接运行 hook
-.git/hooks/auto-commit.sh
 ```
 
-## 📝 Commit Message 规则
+This script:
 
-脚本会根据改动文件自动选择类型:
+1. Checks working tree diff size.
+2. Only if major: `git add -A` + auto commit.
+3. Pushes current branch to `origin`.
 
-| 改动文件 | Commit 类型 | 示例 |
-|---------|------------|------|
-| `frontend/*` | `feat(frontend)` | 前端功能改动 |
-| `backend/*` | `feat(backend)` | 后端功能改动 |
-| `frontend/*` + `backend/*` | `feat(cross)` | 前后端都改动 |
-| `docs/*`, `README*` | `docs` | 文档改动 |
-| `*test*` | `test` | 测试相关 |
-| `.claude/*` | `chore(specs)` | 规格和记忆文件 |
+## Disable temporarily
 
-## 🛠️ 手动提交
-
-如果你想手动控制提交,可以使用标准 Git 命令:
+Disable automatic post-commit push for one command:
 
 ```bash
-# 查看改动
-git status
-
-# 添加文件
-git add <file>
-# 或添加所有
-git add -A
-
-# 提交
-git commit -m "your commit message"
-
-# 推送(如果 post-commit hook 没有自动推送)
-git push origin main
+MAJOR_AUTO_PUSH_ENABLED=0 git commit -m "..."
 ```
 
-## ⚙️ 配置文件
-
-- `.git/hooks/post-commit` - 提交后自动推送
-- `.git/hooks/auto-commit.sh` - 智能自动提交脚本
-- `git-auto-push.sh` - 便捷命令
-
-## 🔧 禁用自动推送
-
-如果你想暂时禁用自动推送功能:
+Skip auto-push from inside scripts:
 
 ```bash
-# 移除 post-commit hook
-rm .git/hooks/post-commit
-
-# 或重命名(保留但禁用)
-mv .git/hooks/post-commit .git/hooks/post-commit.disabled
+SKIP_MAJOR_AUTO_PUSH=1 git commit -m "..."
 ```
-
-## 📌 最佳实践
-
-1. **重要改动**: 手动编写详细的 commit message
-2. **小改动**: 使用自动提交脚本
-3. **紧急修复**: 手动提交并推送,确保快速部署
-
-## 🎯 当前配置
-
-- **仓库**: https://github.com/yisen99/composition-evaluator-v2
-- **分支**: main
-- **自动推送**: ✅ 已启用
-- **智能提交**: ✅ 已配置

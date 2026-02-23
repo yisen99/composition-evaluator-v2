@@ -3,9 +3,11 @@ export type HealthResponse = {
   service: string;
 };
 
+export type UserRole = "teacher" | "student";
+
 export type SendCodeRequest = {
   phone: string;
-  role_hint: "teacher" | "student";
+  role_hint: UserRole;
 };
 
 export type SendCodeResponse = {
@@ -21,7 +23,9 @@ export type LoginRequest = {
 
 export type UserProfile = {
   id: string;
-  role: "teacher" | "student";
+  role: UserRole;
+  available_roles: UserRole[];
+  last_active_role: UserRole;
   phone: string;
   display_name: string;
 };
@@ -29,7 +33,7 @@ export type UserProfile = {
 export type AccountRegisterRequest = {
   email: string;
   password: string;
-  role: "teacher" | "student";
+  role: UserRole;
   display_name: string;
   phone?: string;
 };
@@ -37,7 +41,7 @@ export type AccountRegisterRequest = {
 export type AccountRegisterResponse = {
   id: string;
   email: string;
-  role: "teacher" | "student";
+  role: UserRole;
   display_name: string;
   phone?: string | null;
   is_active: boolean;
@@ -61,7 +65,7 @@ export type WechatAuthorizeResponse = {
 };
 
 export type WechatAuthPayload = {
-  role: "teacher" | "student";
+  role: UserRole;
   next_path?: string | null;
   need_bind_phone: boolean;
   bind_ticket?: string | null;
@@ -83,6 +87,15 @@ export type WechatBindPhoneRequest = {
   phone: string;
   code: string;
   display_name?: string;
+};
+
+export type AuthRolesResponse = {
+  active_role: UserRole;
+  available_roles: UserRole[];
+};
+
+export type SwitchRoleRequest = {
+  target_role: UserRole;
 };
 
 export type GradeBand = "primary" | "junior";

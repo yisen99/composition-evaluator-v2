@@ -23,6 +23,7 @@ from app.db.deps import get_async_db
 from app.db.session import SessionLocal
 from app.models import AuthAccount, User
 from app.schemas.account_auth import AuthAccountCreate, AuthAccountRead, AuthAccountUpdate
+from app.services.account_roles import ensure_account_role, resolve_active_role
 from app.services.auth import normalize_phone
 
 
@@ -212,28 +213,51 @@ def _domain_phone_or_none(db: Session, phone: str | None, domain_user_id: str) -
 
 
 def _upsert_domain_user_from_account(db: Session, user: AuthAccount) -> User:
+    role_inserted = ensure_account_role(
+        db,
+        auth_account_id=user.id,
+        role=user.role,
+    )
     normalized_phone = _safe_normalize_phone(user.phone)
     domain_user = db.get(User, str(user.id))
+    preferred_role = domain_user.role if domain_user else None
+    active_role, _ = resolve_active_role(
+        db,
+        account=user,
+        preferred_role=preferred_role,
+    )
     mapped_phone = _domain_phone_or_none(db, normalized_phone, domain_user_id=str(user.id))
-    changed = False
+    changed = role_inserted
+    if user.role != active_role:
+        user.role = active_role
+        changed = True
+
     if not domain_user:
         domain_user = User(
             id=str(user.id),
-            role=user.role,
+            role=active_role,
             phone=mapped_phone,
             display_name=user.display_name,
+            student_profile_completed_at=user.student_profile_completed_at,
+            teacher_profile_completed_at=user.teacher_profile_completed_at,
         )
         db.add(domain_user)
         changed = True
     else:
-        if domain_user.role != user.role:
-            domain_user.role = user.role
+        if domain_user.role != active_role:
+            domain_user.role = active_role
             changed = True
         if domain_user.phone != mapped_phone:
             domain_user.phone = mapped_phone
             changed = True
         if domain_user.display_name != user.display_name:
             domain_user.display_name = user.display_name
+            changed = True
+        if domain_user.student_profile_completed_at != user.student_profile_completed_at:
+            domain_user.student_profile_completed_at = user.student_profile_completed_at
+            changed = True
+        if domain_user.teacher_profile_completed_at != user.teacher_profile_completed_at:
+            domain_user.teacher_profile_completed_at = user.teacher_profile_completed_at
             changed = True
 
     if changed:
@@ -246,15 +270,19 @@ def _upsert_domain_user_from_account(db: Session, user: AuthAccount) -> User:
             if not domain_user:
                 domain_user = User(
                     id=str(user.id),
-                    role=user.role,
+                    role=active_role,
                     phone=None,
                     display_name=user.display_name,
+                    student_profile_completed_at=user.student_profile_completed_at,
+                    teacher_profile_completed_at=user.teacher_profile_completed_at,
                 )
                 db.add(domain_user)
             else:
                 domain_user.phone = None
-                domain_user.role = user.role
+                domain_user.role = active_role
                 domain_user.display_name = user.display_name
+                domain_user.student_profile_completed_at = user.student_profile_completed_at
+                domain_user.teacher_profile_completed_at = user.teacher_profile_completed_at
             db.commit()
         db.refresh(domain_user)
 

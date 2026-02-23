@@ -1,6 +1,7 @@
 import type {
   AccountRegisterRequest,
   AccountRegisterResponse,
+  AuthRolesResponse,
   AssignmentCommunicationThreadsResponse,
   AssignmentGradingQueueResponse,
   AssignmentDetailResponse,
@@ -36,6 +37,7 @@ import type {
   StudentProgressResponse,
   StudentSubmissionListItem,
   StudentMemoryResponse,
+  SwitchRoleRequest,
   WechatAuthPayload,
   WechatAuthorizeResponse,
   WechatBindPhoneRequest,
@@ -65,7 +67,8 @@ const API_ERROR_MESSAGES: Record<string, string> = {
   "Unsupported image file type": "图片格式不支持，请使用 jpg/jpeg/png/webp/gif。",
   "Unsupported document file type": "文档格式不支持，请使用 doc/docx/pdf/txt/md。",
   "Manual review draft not found": "尚未保存手工批改草稿，请先保存。",
-  "Manual review is not published yet": "老师尚未发布手工批改，暂时不能回复。"
+  "Manual review is not published yet": "老师尚未发布手工批改，暂时不能回复。",
+  "Role is not available for current account": "当前账号不具备该角色权限。"
 };
 
 type ErrorDetailItem = {
@@ -240,6 +243,19 @@ export function refreshLogin(payload: RefreshTokenRequest): Promise<LoginRespons
     method: "POST",
     body: JSON.stringify(payload)
   }, false);
+}
+
+export function getAuthRoles(): Promise<AuthRolesResponse> {
+  return apiRequest<AuthRolesResponse>("/api/v1/auth/roles", {
+    method: "GET"
+  });
+}
+
+export function switchAuthRole(payload: SwitchRoleRequest): Promise<LoginResponse> {
+  return apiRequest<LoginResponse>("/api/v1/auth/switch-role", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export function registerAccount(payload: AccountRegisterRequest): Promise<AccountRegisterResponse> {

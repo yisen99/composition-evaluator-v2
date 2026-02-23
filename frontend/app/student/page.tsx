@@ -11,7 +11,7 @@ import {
   listMySubmissions
 } from "@/lib/api/client";
 import { trackUxEventSafe } from "@/lib/analytics/tracker";
-import { getAuthSession } from "@/lib/auth/session";
+import { clearAuthSession, getAuthSession } from "@/lib/auth/session";
 import { buildAssignmentSubmissionGuard } from "@/lib/submission/assignment-guard";
 import { validateSubmissionDraft } from "@/lib/submission/validation";
 import type {
@@ -139,6 +139,20 @@ export default function StudentPage() {
     () => manualFeedbackList.filter((item) => (item.unread_teacher_reply_count || 0) > 0),
     [manualFeedbackList]
   );
+  const averageManualScore = useMemo(() => {
+    if (manualFeedbackList.length === 0) {
+      return null;
+    }
+    const total = manualFeedbackList.reduce((sum, item) => sum + item.manual_total_score, 0);
+    return (total / manualFeedbackList.length).toFixed(1);
+  }, [manualFeedbackList]);
+  const monthSubmissionCount = useMemo(() => {
+    const now = new Date();
+    return submissionList.filter((item) => {
+      const createdAt = new Date(item.created_at);
+      return createdAt.getFullYear() === now.getFullYear() && createdAt.getMonth() === now.getMonth();
+    }).length;
+  }, [submissionList]);
 
   const jumpToAssignmentSubmit = (assignment: AssignmentListItem) => {
     setSelectedClassId(assignment.class_id);
@@ -241,251 +255,160 @@ export default function StudentPage() {
   }
 
   return (
-    <main className="mx-auto min-h-screen max-w-6xl p-6 md:p-10">
-      <section className="poster-shell p-6 md:p-8">
-        <div className="relative z-10 flex flex-col gap-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="seal-chip">学生工作台 · 入班与作文提交</span>
-            <div className="flex items-center gap-3 text-sm text-slate-700">
-              <Link className="underline" href="/student/progress">
-                成长轨迹
-              </Link>
-              <Link className="underline" href="/student/feedback">
-                手工批改结果{unreadTeacherReplyCount > 0 ? `（${unreadTeacherReplyCount} 条新回复）` : ""}
-              </Link>
-              <span>
-                {currentUser.display_name} · {currentUser.phone}
-              </span>
-            </div>
+    <main className="mx-auto min-h-screen max-w-[1500px] p-3 md:p-6">
+      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+        <aside className="flex h-fit flex-col rounded-3xl border border-slate-200 bg-white/90 shadow-[0_18px_48px_rgba(15,23,42,0.12)] lg:sticky lg:top-20">
+          <div className="border-b border-slate-200 px-6 py-6">
+            <p className="text-3xl font-bold text-indigo-600">作文协同台</p>
+          </div>
+          <nav className="space-y-2 p-4 text-base">
+            <Link className="block rounded-xl bg-indigo-50 px-4 py-3 font-semibold text-indigo-700" href="/student">
+              我的工作台
+            </Link>
+            <Link className="block rounded-xl px-4 py-3 text-slate-600 transition hover:bg-slate-100" href="/student/progress">
+              成长轨迹
+            </Link>
+            <Link className="block rounded-xl px-4 py-3 text-slate-600 transition hover:bg-slate-100" href="/student/feedback">
+              批改反馈{unreadTeacherReplyCount > 0 ? ` (${unreadTeacherReplyCount})` : ""}
+            </Link>
+          </nav>
+          <div className="mt-auto border-t border-slate-200 p-4">
+            <p className="text-sm font-semibold text-slate-800">{currentUser.display_name}</p>
+            <p className="text-sm text-slate-500">学生</p>
+            <button
+              className="mt-3 rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-100"
+              onClick={() => {
+                clearAuthSession();
+                window.location.href = "/login/student";
+              }}
+              type="button"
+            >
+              退出登录
+            </button>
+          </div>
+        </aside>
+
+        <section className="space-y-4">
+          <div className="rounded-3xl border border-slate-200 bg-white/90 px-5 py-5 shadow-[0_16px_42px_rgba(15,23,42,0.1)] md:px-8">
+            <h1 className="text-5xl font-bold tracking-tight text-slate-900">你好，{currentUser.display_name}</h1>
+            <p className="mt-2 text-2xl text-slate-500">今天有 {pendingSubmissionAssignments.length} 个任务待完成</p>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-4">
-            <div className="paper-card p-4">
-              <p className="label">已加入班级</p>
-              <p className="mt-2 text-2xl font-semibold">{classroomList.length}</p>
-            </div>
-            <div className="paper-card p-4">
-              <p className="label">可见任务</p>
-              <p className="mt-2 text-2xl font-semibold">{visibleAssignments.length}</p>
-            </div>
-            <div className="paper-card p-4">
-              <p className="label">历史提交</p>
-              <p className="mt-2 text-2xl font-semibold">{submissionList.length}</p>
-            </div>
-            <div className="paper-card p-4">
-              <p className="label">老师新回复</p>
-              <p className="mt-2 text-2xl font-semibold">{unreadTeacherReplyCount}</p>
-            </div>
-          </div>
-
-          <div className="paper-card p-4">
-            <p className="label">待办优先（先做最重要的）</p>
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
-              <div className="rounded-lg border border-amber-700/35 bg-amber-50/80 p-3">
-                <p className="text-xs font-semibold text-amber-900">待提交任务</p>
-                <p className="mt-1 text-2xl font-semibold text-amber-950">{pendingSubmissionAssignments.length}</p>
-                <p className="mt-1 text-xs text-amber-900">
-                  {pendingSubmissionAssignments.length > 0 ? "建议先提交最近截止任务。" : "当前暂无待提交任务。"}
-                </p>
-                {pendingSubmissionAssignments.length > 0 ? (
-                  <button
-                    className="btn-seal mt-2 px-3 py-1 text-xs"
-                    onClick={() => jumpToAssignmentSubmit(pendingSubmissionAssignments[0])}
-                    type="button"
-                  >
-                    一键去提交
-                  </button>
-                ) : null}
-              </div>
-              <div className="rounded-lg border border-rose-700/35 bg-rose-50/80 p-3">
-                <p className="text-xs font-semibold text-rose-900">未读反馈</p>
-                <p className="mt-1 text-2xl font-semibold text-rose-950">{unreadTeacherReplyCount}</p>
-                <p className="mt-1 text-xs text-rose-900">进入反馈页，优先查看老师刚发布的内容。</p>
-                <Link
-                  className="btn-ink mt-2 inline-block px-3 py-1 text-xs"
-                  href="/student/feedback"
-                  onClick={() =>
-                    trackUxEventSafe({
-                      event_name: "student_todo_card_click",
-                      event_category: "action",
-                      page: "/student",
-                      properties: { todo_type: "unread_feedback" }
-                    })
-                  }
-                >
-                  去看反馈
-                </Link>
-              </div>
-              <div className="rounded-lg border border-emerald-700/35 bg-emerald-50/80 p-3">
-                <p className="text-xs font-semibold text-emerald-900">待回复老师</p>
-                <p className="mt-1 text-2xl font-semibold text-emerald-950">{unreadFeedbackItems.length}</p>
-                <p className="mt-1 text-xs text-emerald-900">收到新回复后，建议当天完成追问或确认。</p>
-                <Link
-                  className="btn-seal mt-2 inline-block px-3 py-1 text-xs"
-                  href="/student/feedback"
-                  onClick={() =>
-                    trackUxEventSafe({
-                      event_name: "student_todo_card_click",
-                      event_category: "action",
-                      page: "/student",
-                      properties: { todo_type: "pending_reply" }
-                    })
-                  }
-                >
-                  去回复老师
-                </Link>
-              </div>
-            </div>
-            {pendingSubmissionAssignments.length > 0 ? (
-              <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-slate-700">
-                {pendingSubmissionAssignments.slice(0, 3).map((item) => (
-                  <li key={item.assignment_id}>
-                    {item.title}
-                    {item.due_at
-                      ? `（截止 ${new Date(item.due_at).toLocaleString("zh-CN", { hour12: false })}）`
-                      : "（未设置截止时间）"}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </div>
-
-          <div className="paper-card p-4">
-            <p className="label">快捷导航</p>
-            <div className="mt-2 flex flex-wrap gap-2 text-sm">
-              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#join-class">
-                加入班级
-              </a>
-              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#submit-composition">
-                提交作文
-              </a>
-              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#visible-tasks">
-                查看任务
-              </a>
-              <a className="rounded-full border border-slate-300/60 bg-white/70 px-3 py-1" href="#my-submissions">
-                查看提交
-              </a>
-              <Link className="rounded-full border border-emerald-700/35 bg-emerald-50 px-3 py-1" href="/student/feedback">
-                去看批改反馈{unreadTeacherReplyCount > 0 ? ` (${unreadTeacherReplyCount})` : ""}
-              </Link>
-            </div>
-          </div>
-
-          <div className="grid gap-5 lg:grid-cols-2">
-            <form className="paper-card space-y-4 p-5" id="join-class" onSubmit={onJoinClass}>
-              <h1 className="poster-title text-3xl font-bold">1) 输入班级码加入课堂</h1>
-
-              <div>
-                <p className="label">学生姓名</p>
-                <input className="field mt-1" value={studentName} onChange={(event) => setStudentName(event.target.value)} />
-              </div>
-
-              <div>
-                <p className="label">班级码</p>
-                <input
-                  className="field mt-1 uppercase tracking-[0.2em]"
-                  value={joinCode}
-                  onChange={(event) => setJoinCode(event.target.value)}
-                  placeholder="例如 ABC123"
-                />
-              </div>
-
-              <button className="btn-seal w-full text-sm" type="submit" disabled={busy === "join"}>
-                {busy === "join" ? "加入中..." : "加入班级"}
-              </button>
-            </form>
-
-            <form className="paper-card space-y-4 p-5" id="submit-composition" onSubmit={onSubmitComposition}>
-              <h2 className="poster-title text-3xl font-bold">2) 提交作文</h2>
-
-              <div>
-                <p className="label">已加入班级</p>
-                <select
-                  className="field mt-1"
-                  value={selectedClassId}
-                  onChange={(event) => setSelectedClassId(event.target.value)}
-                >
-                  <option value="">请选择班级</option>
-                  {classroomList.map((room) => (
-                    <option key={room.class_id} value={room.class_id}>
-                      {room.name} · {room.join_code}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <p className="label">可见任务</p>
-                <select
-                  className="field mt-1"
-                  value={selectedAssignmentId}
-                  onChange={(event) => setSelectedAssignmentId(event.target.value)}
-                >
-                  <option value="">请选择任务</option>
-                  {visibleAssignments.map((item) => {
-                    const guard = buildAssignmentSubmissionGuard(item);
-                    return (
-                      <option key={item.assignment_id} value={item.assignment_id}>
-                        {item.title}
-                        {guard.overdue ? "（已截止）" : item.status !== "published" ? "（未发布）" : ""}
-                      </option>
-                    );
-                  })}
-                </select>
-                <p className="mt-2 text-xs text-slate-600">
-                  {selectedAssignment
-                    ? `截止时间：${selectedAssignment.due_at ? new Date(selectedAssignment.due_at).toLocaleString("zh-CN", { hour12: false }) : "未设置"}`
-                    : "请选择任务后查看截止时间。"}
-                </p>
-                {!assignmentGuard.allowed && assignmentGuard.reason ? (
-                  <p className="mt-1 text-xs text-rose-700">{assignmentGuard.reason}</p>
-                ) : null}
-              </div>
-
-              <div>
-                <p className="label">提交格式</p>
-                <select
-                  className="field mt-1"
-                  value={submissionType}
-                  onChange={(event) => {
-                    setSubmissionType(event.target.value as SubmissionContentType);
-                    setUploadFile(null);
-                  }}
-                >
-                  <option value="text">文本（text）</option>
-                  <option value="image">图片（image）</option>
-                  <option value="document">文档（document）</option>
-                </select>
-              </div>
-
-              {submissionType === "text" ? (
-                <div>
-                  <p className="label">正文内容</p>
-                  <textarea
-                    className="field mt-1 min-h-28"
-                    value={textContent}
-                    onChange={(event) => setTextContent(event.target.value)}
-                  />
+          <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
+            <div className="space-y-4">
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-4xl font-bold text-slate-900">待提交任务</h2>
+                  <span className="rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700">优先处理</span>
                 </div>
-              ) : (
-                <div>
-                  <p className="label">上传文件</p>
-                  <input
-                    className="field mt-1"
-                    type="file"
-                    accept={submissionType === "image" ? "image/*" : ".doc,.docx,.pdf,.txt,.md"}
-                    onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
-                  />
-                  <p className="mt-2 text-xs text-slate-600">
-                    支持 10MB 以内文件；图片仅支持 jpg/jpeg/png/webp/gif，文档支持 doc/docx/pdf/txt/md。
-                  </p>
-                </div>
-              )}
+                {pendingSubmissionAssignments.length === 0 ? (
+                  <div className="mt-4 rounded-2xl border border-dashed border-emerald-300 bg-emerald-50 p-8 text-center text-2xl text-emerald-700">
+                    所有任务已完成，太棒了！
+                  </div>
+                ) : (
+                  <ul className="mt-4 space-y-3">
+                    {pendingSubmissionAssignments.slice(0, 4).map((item) => (
+                      <li key={item.assignment_id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-xl font-bold text-slate-900">{item.title}</p>
+                            <p className="mt-1 text-sm text-slate-500">
+                              {item.due_at
+                                ? `截止 ${new Date(item.due_at).toLocaleString("zh-CN", { hour12: false })}`
+                                : "未设置截止时间"}
+                            </p>
+                          </div>
+                          <button
+                            className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"
+                            onClick={() => jumpToAssignmentSubmit(item)}
+                            type="button"
+                          >
+                            去提交
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
 
-              <button className="btn-ink w-full text-sm" type="submit" disabled={busy === "submit" || !assignmentGuard.allowed}>
-                {busy === "submit" ? "提交中..." : "提交作文"}
-              </button>
-            </form>
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 className="text-4xl font-bold text-slate-900">最近反馈</h2>
+                <ul className="mt-4 space-y-3">
+                  {manualFeedbackList.length === 0 ? (
+                    <li className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">
+                      还没有老师发布的批改，先完成提交任务。
+                    </li>
+                  ) : (
+                    manualFeedbackList.slice(0, 2).map((item) => (
+                      <li key={item.submission_id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <span className="rounded-2xl bg-emerald-100 px-3 py-2 text-2xl font-bold text-emerald-700">
+                              {item.manual_total_score}
+                            </span>
+                            <div>
+                              <p className="text-xl font-bold text-slate-900">{item.assignment_title}</p>
+                              <p className="text-sm text-slate-500">{item.summary_feedback}</p>
+                            </div>
+                          </div>
+                          <Link className="text-sm font-semibold text-indigo-600 hover:underline" href="/student/feedback">
+                            查看详情
+                          </Link>
+                        </div>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-3xl bg-gradient-to-br from-indigo-600 to-blue-600 p-5 text-white shadow-[0_16px_34px_rgba(79,70,229,0.35)]">
+                <h2 className="text-3xl font-bold">成长概览</h2>
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-2xl bg-white/10 px-4 py-4">
+                    <p className="text-sm text-white/80">平均得分</p>
+                    <p className="text-5xl font-bold">{averageManualScore ?? "--"}</p>
+                  </div>
+                  <div className="rounded-2xl bg-white/10 px-4 py-4">
+                    <p className="text-sm text-white/80">本月提交</p>
+                    <p className="text-5xl font-bold">{monthSubmissionCount} 篇</p>
+                  </div>
+                  <Link className="inline-block text-sm font-semibold underline" href="/student/progress">
+                    查看详细成长轨迹
+                  </Link>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 className="text-3xl font-bold text-slate-900">待回复老师</h2>
+                {unreadFeedbackItems.length === 0 ? (
+                  <p className="mt-3 text-sm text-slate-500">当前没有新的老师回复。</p>
+                ) : (
+                  <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xl font-bold text-slate-900">{unreadFeedbackItems[0].assignment_title}</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      有 {unreadFeedbackItems[0].unread_teacher_reply_count || 0} 条新回复，建议优先沟通。
+                    </p>
+                    <Link
+                      className="mt-2 inline-block text-sm font-semibold text-indigo-600 hover:underline"
+                      href="/student/feedback"
+                      onClick={() =>
+                        trackUxEventSafe({
+                          event_name: "student_todo_card_click",
+                          event_category: "action",
+                          page: "/student",
+                          properties: { todo_type: "pending_reply" }
+                        })
+                      }
+                    >
+                      去回复老师
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {result ? (
@@ -508,84 +431,192 @@ export default function StudentPage() {
 
           {busy === "loading" ? <p className="text-sm text-slate-700">正在同步班级与任务列表...</p> : null}
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <div className="paper-card p-4" id="joined-classes">
-              <p className="label">已加入班级</p>
-              <ul className="mt-2 space-y-2 text-sm">
+          <div className="grid gap-4 xl:grid-cols-2">
+            <form className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" id="join-class" onSubmit={onJoinClass}>
+              <h3 className="text-3xl font-bold text-slate-900">加入班级</h3>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">学生姓名</p>
+                  <input className="field rounded-xl border-slate-300 bg-white" value={studentName} onChange={(event) => setStudentName(event.target.value)} />
+                </div>
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">班级码</p>
+                  <input
+                    className="field rounded-xl border-slate-300 bg-white uppercase tracking-[0.2em]"
+                    value={joinCode}
+                    onChange={(event) => setJoinCode(event.target.value)}
+                    placeholder="例如 ABC123"
+                  />
+                </div>
+                <button className="h-12 w-full rounded-xl bg-indigo-600 text-sm font-semibold text-white" type="submit" disabled={busy === "join"}>
+                  {busy === "join" ? "加入中..." : "加入班级"}
+                </button>
+              </div>
+            </form>
+
+            <form className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" id="submit-composition" onSubmit={onSubmitComposition}>
+              <h3 className="text-3xl font-bold text-slate-900">提交作文</h3>
+              <div className="mt-4 space-y-4">
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">已加入班级</p>
+                  <select
+                    className="field rounded-xl border-slate-300 bg-white"
+                    value={selectedClassId}
+                    onChange={(event) => setSelectedClassId(event.target.value)}
+                  >
+                    <option value="">请选择班级</option>
+                    {classroomList.map((room) => (
+                      <option key={room.class_id} value={room.class_id}>
+                        {room.name} · {room.join_code}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">可见任务</p>
+                  <select
+                    className="field rounded-xl border-slate-300 bg-white"
+                    value={selectedAssignmentId}
+                    onChange={(event) => setSelectedAssignmentId(event.target.value)}
+                  >
+                    <option value="">请选择任务</option>
+                    {visibleAssignments.map((item) => {
+                      const guard = buildAssignmentSubmissionGuard(item);
+                      return (
+                        <option key={item.assignment_id} value={item.assignment_id}>
+                          {item.title}
+                          {guard.overdue ? "（已截止）" : item.status !== "published" ? "（未发布）" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <p className="mt-2 text-xs text-slate-500">
+                    {selectedAssignment
+                      ? `截止时间：${selectedAssignment.due_at ? new Date(selectedAssignment.due_at).toLocaleString("zh-CN", { hour12: false }) : "未设置"}`
+                      : "请选择任务后查看截止时间。"}
+                  </p>
+                  {!assignmentGuard.allowed && assignmentGuard.reason ? (
+                    <p className="mt-1 text-xs text-rose-700">{assignmentGuard.reason}</p>
+                  ) : null}
+                </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">提交格式</p>
+                  <select
+                    className="field rounded-xl border-slate-300 bg-white"
+                    value={submissionType}
+                    onChange={(event) => {
+                      setSubmissionType(event.target.value as SubmissionContentType);
+                      setUploadFile(null);
+                    }}
+                  >
+                    <option value="text">文本（text）</option>
+                    <option value="image">图片（image）</option>
+                    <option value="document">文档（document）</option>
+                  </select>
+                </div>
+
+                {submissionType === "text" ? (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">正文内容</p>
+                    <textarea
+                      className="field min-h-28 rounded-xl border-slate-300 bg-white"
+                      value={textContent}
+                      onChange={(event) => setTextContent(event.target.value)}
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">上传文件</p>
+                    <input
+                      className="field rounded-xl border-slate-300 bg-white"
+                      type="file"
+                      accept={submissionType === "image" ? "image/*" : ".doc,.docx,.pdf,.txt,.md"}
+                      onChange={(event) => setUploadFile(event.target.files?.[0] ?? null)}
+                    />
+                    <p className="mt-2 text-xs text-slate-500">
+                      支持 10MB 以内文件；图片支持 jpg/jpeg/png/webp/gif，文档支持 doc/docx/pdf/txt/md。
+                    </p>
+                  </div>
+                )}
+
+                <button
+                  className="h-12 w-full rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-sm font-semibold text-white"
+                  type="submit"
+                  disabled={busy === "submit" || !assignmentGuard.allowed}
+                >
+                  {busy === "submit" ? "提交中..." : "提交作文"}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-3">
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" id="joined-classes">
+              <p className="text-sm font-semibold text-slate-700">已加入班级</p>
+              <ul className="mt-3 space-y-2 text-sm">
                 {classroomList.length === 0 ? (
-                  <li className="text-slate-600">你还没有加入任何班级。</li>
+                  <li className="text-slate-500">你还没有加入任何班级。</li>
                 ) : (
                   classroomList.map((room) => (
-                    <li key={room.class_id} className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-2">
+                    <li key={room.class_id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                       <p className="font-semibold">{room.name}</p>
-                      <p className="text-xs text-slate-700">学段：{room.grade_band === "primary" ? "小学" : "初中"}</p>
-                      <p className="text-xs text-slate-700">班级编号：{room.class_id}</p>
+                      <p className="text-xs text-slate-500">学段：{room.grade_band === "primary" ? "小学" : "初中"}</p>
                     </li>
                   ))
                 )}
               </ul>
             </div>
-            <div className="paper-card p-4" id="visible-tasks">
-              <p className="label">当前班级任务</p>
-              <div className="mt-2 space-y-2 text-sm">
-                <p>当前选中班级：{selectedClassName}</p>
-                <ul className="space-y-2">
-                  {visibleAssignments.length === 0 ? (
-                    <li className="text-slate-600">当前班级暂无任务。</li>
-                  ) : (
-                    visibleAssignments.slice(0, 6).map((item) => {
-                      const guard = buildAssignmentSubmissionGuard(item);
-                      return (
-                        <li key={item.assignment_id} className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-2">
-                          <p className="font-semibold">
-                            {item.title}
-                            {guard.overdue ? "（已截止）" : item.status !== "published" ? "（未发布）" : ""}
-                          </p>
-                          <p className="text-xs text-slate-700">任务ID：{item.assignment_id}</p>
-                          <p className="text-xs text-slate-700">状态：{item.status}</p>
-                          <p className="text-xs text-slate-700">
-                            截止：{item.due_at ? new Date(item.due_at).toLocaleString("zh-CN", { hour12: false }) : "未设置"}
-                          </p>
-                        </li>
-                      );
-                    })
-                  )}
-                </ul>
-              </div>
+
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" id="visible-tasks">
+              <p className="text-sm font-semibold text-slate-700">当前班级任务</p>
+              <p className="mt-2 text-xs text-slate-500">当前选中班级：{selectedClassName}</p>
+              <ul className="mt-3 space-y-2 text-sm">
+                {visibleAssignments.length === 0 ? (
+                  <li className="text-slate-500">当前班级暂无任务。</li>
+                ) : (
+                  visibleAssignments.slice(0, 6).map((item) => {
+                    const guard = buildAssignmentSubmissionGuard(item);
+                    return (
+                      <li key={item.assignment_id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                        <p className="font-semibold">
+                          {item.title}
+                          {guard.overdue ? "（已截止）" : item.status !== "published" ? "（未发布）" : ""}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          截止：{item.due_at ? new Date(item.due_at).toLocaleString("zh-CN", { hour12: false }) : "未设置"}
+                        </p>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
             </div>
-            <div className="paper-card p-4" id="my-submissions">
-              <p className="label">我的最近提交</p>
-              <ul className="mt-2 space-y-2 text-sm">
+
+            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" id="my-submissions">
+              <p className="text-sm font-semibold text-slate-700">我的最近提交</p>
+              <ul className="mt-3 space-y-2 text-sm">
                 {submissionList.length === 0 ? (
-                  <li className="text-slate-600">暂无提交记录。</li>
+                  <li className="text-slate-500">暂无提交记录。</li>
                 ) : (
                   submissionList.slice(0, 8).map((item) => (
-                    <li key={item.submission_id} className="rounded-lg border border-slate-300/50 bg-white/60 px-3 py-2">
+                    <li key={item.submission_id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                       <p className="font-semibold">{item.assignment_title}</p>
-                      <p className="text-xs text-slate-700">提交ID：{item.submission_id}</p>
-                      <p className="text-xs text-slate-700">
-                        班级：{item.class_name} · 类型：{item.content_type} · 状态：{item.status}
+                      <p className="text-xs text-slate-500">
+                        班级：{item.class_name} · 状态：{item.status}
                       </p>
-                      <p className="text-xs text-slate-700">
+                      <p className="text-xs text-slate-500">
                         提交时间：{new Date(item.created_at).toLocaleString("zh-CN", { hour12: false })}
                       </p>
-                      {item.text_excerpt ? <p className="mt-1 text-xs text-slate-700">摘要：{item.text_excerpt}</p> : null}
-                      {item.file_url ? (
-                        <p className="mt-1 text-xs text-slate-700">
-                          文件：
-                          <a className="underline" href={item.file_url} target="_blank" rel="noreferrer">
-                            {item.file_name || "查看文件"}
-                          </a>
-                        </p>
-                      ) : null}
                     </li>
                   ))
                 )}
               </ul>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
   );
 }

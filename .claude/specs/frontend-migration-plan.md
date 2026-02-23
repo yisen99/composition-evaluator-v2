@@ -37,14 +37,14 @@ export function cn(...inputs: ClassValue[]) {
 ### Phase 2: 组件迁移
 
 #### 2.1 迁移 Sidebar 组件
-- 源文件: `ai-studio/src/App.tsx` (Sidebar 部分)
+- 源文件: `frontend/app/teacher/tasks/page.tsx` (左侧导航布局参考)
 - 目标: `frontend/app/components/Sidebar.tsx`
 - 改造点:
   - 使用 Next.js Link 替代 React Router Link
   - 添加服务端用户状态检查
 
 #### 2.2 迁移 LoginPage
-- 源文件: `ai-studio/src/App.tsx` (LoginPage 部分)
+- 源文件: `frontend/app/login/_components/role-auth-page.tsx`
 - 目标: `frontend/app/login/page.tsx`
 - 改造点:
   - 对接 `/api/v1/auth/send-code` 和 `/api/v1/auth/login`
@@ -52,14 +52,14 @@ export function cn(...inputs: ClassValue[]) {
   - 添加角色选择（教师/学生）
 
 #### 2.3 迁移 TeacherDashboard
-- 源文件: `ai-studio/src/App.tsx` (TeacherDashboard 部分)
+- 源文件: `frontend/app/teacher/tasks/page.tsx`
 - 目标: `frontend/app/teacher/page.tsx`
 - 改造点:
   - 对接 `/api/v1/teacher/tasks`
   - 保留 P0/P1/P2 优先级卡片
 
 #### 2.4 迁移 StudentDashboard
-- 源文件: `ai-studio/src/App.tsx` (StudentDashboard 部分)
+- 源文件: `frontend/app/student/page.tsx`
 - 目标: `frontend/app/student/page.tsx`
 - 改造点:
   - 对接 `/api/v1/student/dashboard`

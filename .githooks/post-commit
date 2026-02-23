@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ "${MAJOR_AUTO_PUSH_ENABLED:-1}" != "1" ]]; then
+  exit 0
+fi
+
+if [[ "${SKIP_MAJOR_AUTO_PUSH:-0}" == "1" ]]; then
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "${repo_root}" ]]; then
+  exit 0
+fi
+
+# shellcheck source=.githooks/lib/major-change.sh
+source "${repo_root}/.githooks/lib/major-change.sh"
+
+branch="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+if [[ -z "${branch}" ]]; then
+  exit 0
+fi
+
+remote="${MAJOR_AUTO_PUSH_REMOTE:-origin}"
+if ! git remote get-url "${remote}" >/dev/null 2>&1; then
+  echo "[major-auto-push] remote '${remote}' not found; skip auto push."
+  exit 0
+fi
+
+shortstat="$(git show --shortstat --format= HEAD | tail -n 1)"
+read -r files _insertions _deletions changed_lines <<<"$(parse_shortstat "${shortstat}")"
+
+if ! is_major_change "${files}" "${changed_lines}"; then
+  exit 0
+fi
+
+echo "[major-auto-push] major commit detected (${files} files, ${changed_lines} lines)."
+echo "[major-auto-push] pushing ${branch} -> ${remote}/${branch}"
+if git push "${remote}" "${branch}"; then
+  echo "[major-auto-push] push completed."
+else
+  echo "[major-auto-push] push failed. retry manually: git push ${remote} ${branch}" >&2
+fi

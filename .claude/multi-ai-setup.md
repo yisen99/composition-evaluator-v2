@@ -269,7 +269,7 @@ projects:
 
 ### 前端任务（Gemini）
 - 文件：frontend/app/teacher/page.tsx
-- 参考：/tmp/ai-studio-frontend/src/App.tsx (TeacherDashboard)
+- 参考：frontend/app/teacher/tasks/page.tsx (任务中心布局)
 - API：
   - GET /api/v1/teacher/tasks
   - GET /api/v1/tasks/{id}/submissions

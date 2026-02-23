@@ -10,6 +10,25 @@ export type AuthSession = LoginResponse;
 export type AuthRole = AuthSession["user"]["role"];
 const FALLBACK_ACCESS_TOKEN_EXPIRE_MINUTES = Number(process.env.NEXT_PUBLIC_ACCESS_TOKEN_EXPIRE_MINUTES || "60");
 
+function normalizeSessionShape(session: AuthSession): AuthSession {
+  const availableRoles = session.user.available_roles?.length ? session.user.available_roles : [session.user.role];
+  const uniqueRoles = Array.from(new Set(availableRoles));
+  const activeRole = uniqueRoles.includes(session.user.role) ? session.user.role : uniqueRoles[0];
+  const lastActiveRole = uniqueRoles.includes(session.user.last_active_role)
+    ? session.user.last_active_role
+    : activeRole;
+
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      role: activeRole,
+      available_roles: uniqueRoles,
+      last_active_role: lastActiveRole
+    }
+  };
+}
+
 function parseJwtPayload(token: string): Record<string, unknown> | null {
   const parts = token.split(".");
   if (parts.length < 2) {
@@ -101,7 +120,7 @@ export function getAuthSession(): AuthSession | null {
     return null;
   }
   try {
-    const session = JSON.parse(raw) as AuthSession;
+    const session = normalizeSessionShape(JSON.parse(raw) as AuthSession);
     const tokenExp = readAccessTokenExp(session) ?? readAuthExpiresCookie();
     if (tokenExp && tokenExp <= Math.floor(Date.now() / 1000)) {
       clearAuthSession();
@@ -118,8 +137,9 @@ export function saveAuthSession(session: AuthSession): void {
   if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
-  syncAuthCookies(session);
+  const normalized = normalizeSessionShape(session);
+  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(normalized));
+  syncAuthCookies(normalized);
 }
 
 export function clearAuthSession(): void {
@@ -133,4 +153,11 @@ export function clearAuthSession(): void {
 
 export function getAccessToken(): string | null {
   return getAuthSession()?.access_token ?? null;
+}
+
+export function hasRole(session: AuthSession | null, role: AuthRole): boolean {
+  if (!session) {
+    return false;
+  }
+  return session.user.available_roles.includes(role);
 }

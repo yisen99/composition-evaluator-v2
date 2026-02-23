@@ -1117,6 +1117,8 @@ describe("frontend smoke", () => {
             user: {
               id: "user-1",
               role: "teacher",
+              available_roles: ["teacher"],
+              last_active_role: "teacher",
               phone: "13800138000",
               display_name: "账号老师"
             }
@@ -1192,6 +1194,8 @@ describe("frontend smoke", () => {
             user: {
               id: "user-1",
               role: "student",
+              available_roles: ["student"],
+              last_active_role: "student",
               phone: "13800138000",
               display_name: "微信学生"
             }

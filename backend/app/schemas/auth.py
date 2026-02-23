@@ -29,6 +29,8 @@ class PasswordLoginRequest(BaseModel):
 class UserProfile(BaseModel):
     id: str
     role: UserRole
+    available_roles: list[UserRole]
+    last_active_role: UserRole
     phone: str
     display_name: str
 
@@ -41,6 +43,26 @@ class LoginResponse(BaseModel):
 
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
+
+
+class SwitchRoleRequest(BaseModel):
+    target_role: UserRole
+
+
+class AuthRolesResponse(BaseModel):
+    active_role: UserRole
+    available_roles: list[UserRole]
+
+
+class AdminGrantRoleRequest(BaseModel):
+    phone: str
+    target_role: UserRole
+
+
+class AdminGrantRoleResponse(BaseModel):
+    account_id: str
+    active_role: UserRole
+    available_roles: list[UserRole]
 
 
 class WechatAuthorizeResponse(BaseModel):
