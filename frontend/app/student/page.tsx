@@ -28,6 +28,31 @@ type Toast = {
   message: string;
 };
 
+function toMillis(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function sortByDueAt(assignmentList: AssignmentListItem[]): AssignmentListItem[] {
+  return [...assignmentList].sort((a, b) => {
+    const dueA = toMillis(a.due_at);
+    const dueB = toMillis(b.due_at);
+    if (dueA !== null && dueB !== null) {
+      return dueA - dueB;
+    }
+    if (dueA !== null) {
+      return -1;
+    }
+    if (dueB !== null) {
+      return 1;
+    }
+    return a.assignment_id.localeCompare(b.assignment_id);
+  });
+}
+
 export default function StudentPage() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [studentName, setStudentName] = useState("");
@@ -94,46 +119,74 @@ export default function StudentPage() {
     void hydrateWorkspace();
   }, [currentUser]);
 
-  const visibleAssignments = useMemo(
-    () => assignmentList.filter((item) => !selectedClassId || item.class_id === selectedClassId),
-    [assignmentList, selectedClassId]
+  const sortedAssignments = useMemo(
+    () => sortByDueAt(assignmentList),
+    [assignmentList]
   );
-  const selectedAssignment = useMemo(
-    () => visibleAssignments.find((item) => item.assignment_id === selectedAssignmentId) ?? null,
-    [selectedAssignmentId, visibleAssignments]
-  );
-  const assignmentGuard = useMemo(
-    () => buildAssignmentSubmissionGuard(selectedAssignment),
-    [selectedAssignment]
-  );
-
-  useEffect(() => {
-    if (visibleAssignments.length === 0) {
-      setSelectedAssignmentId("");
-      return;
-    }
-    const stillExists = visibleAssignments.some((item) => item.assignment_id === selectedAssignmentId);
-    if (!stillExists) {
-      setSelectedAssignmentId(visibleAssignments[0].assignment_id);
-    }
-  }, [selectedAssignmentId, visibleAssignments]);
-
-  const selectedClassName = useMemo(
-    () => classroomList.find((item) => item.class_id === selectedClassId)?.name ?? "未选择",
-    [classroomList, selectedClassId]
-  );
-
   const submissionAssignmentIdSet = useMemo(
     () => new Set(submissionList.map((item) => item.assignment_id)),
     [submissionList]
   );
   const pendingSubmissionAssignments = useMemo(
     () =>
-      assignmentList.filter((item) => {
+      sortedAssignments.filter((item) => {
         const guard = buildAssignmentSubmissionGuard(item);
         return guard.allowed && !submissionAssignmentIdSet.has(item.assignment_id);
       }),
-    [assignmentList, submissionAssignmentIdSet]
+    [sortedAssignments, submissionAssignmentIdSet]
+  );
+  const visibleAssignments = useMemo(
+    () => sortedAssignments.filter((item) => !selectedClassId || item.class_id === selectedClassId),
+    [selectedClassId, sortedAssignments]
+  );
+  const pendingVisibleAssignments = useMemo(
+    () =>
+      pendingSubmissionAssignments.filter(
+        (item) => !selectedClassId || item.class_id === selectedClassId
+      ),
+    [pendingSubmissionAssignments, selectedClassId]
+  );
+  const selectedAssignment = useMemo(
+    () => sortedAssignments.find((item) => item.assignment_id === selectedAssignmentId) ?? null,
+    [selectedAssignmentId, sortedAssignments]
+  );
+  const selectedAssignmentAlreadySubmitted = useMemo(
+    () =>
+      Boolean(
+        selectedAssignment &&
+          submissionAssignmentIdSet.has(selectedAssignment.assignment_id)
+      ),
+    [selectedAssignment, submissionAssignmentIdSet]
+  );
+  const assignmentGuard = useMemo(
+    () => buildAssignmentSubmissionGuard(selectedAssignment),
+    [selectedAssignment]
+  );
+  const canSubmitSelectedAssignment = Boolean(selectedAssignment) && assignmentGuard.allowed && !selectedAssignmentAlreadySubmitted;
+
+  useEffect(() => {
+    if (pendingVisibleAssignments.length > 0) {
+      const stillExists = pendingVisibleAssignments.some((item) => item.assignment_id === selectedAssignmentId);
+      if (!stillExists) {
+        setSelectedAssignmentId(pendingVisibleAssignments[0].assignment_id);
+      }
+      return;
+    }
+    if (visibleAssignments.length > 0) {
+      const stillExists = visibleAssignments.some((item) => item.assignment_id === selectedAssignmentId);
+      if (!stillExists) {
+        setSelectedAssignmentId(visibleAssignments[0].assignment_id);
+      }
+      return;
+    }
+    if (selectedAssignmentId) {
+      setSelectedAssignmentId("");
+    }
+  }, [pendingVisibleAssignments, selectedAssignmentId, visibleAssignments]);
+
+  const selectedClassName = useMemo(
+    () => classroomList.find((item) => item.class_id === selectedClassId)?.name ?? "未选择",
+    [classroomList, selectedClassId]
   );
   const unreadFeedbackItems = useMemo(
     () => manualFeedbackList.filter((item) => (item.unread_teacher_reply_count || 0) > 0),
@@ -193,6 +246,14 @@ export default function StudentPage() {
 
   const onSubmitComposition = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!selectedAssignment) {
+      setToast({ type: "error", message: "请先选择一个待提交任务。" });
+      return;
+    }
+    if (selectedAssignmentAlreadySubmitted) {
+      setToast({ type: "error", message: "该任务已提交，请选择未提交任务。" });
+      return;
+    }
     if (!assignmentGuard.allowed) {
       setToast({ type: "error", message: assignmentGuard.reason || "当前任务不可提交。" });
       return;
@@ -213,7 +274,7 @@ export default function StudentPage() {
       text_content?: string;
       file?: File;
     } = {
-      assignment_id: selectedAssignmentId,
+      assignment_id: selectedAssignment.assignment_id,
       content_type: submissionType
     };
 
@@ -474,14 +535,18 @@ export default function StudentPage() {
                 </div>
 
                 <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">可见任务</p>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">待提交任务</p>
                   <select
                     className="field rounded-xl border-slate-300 bg-white"
                     value={selectedAssignmentId}
                     onChange={(event) => setSelectedAssignmentId(event.target.value)}
                   >
-                    <option value="">请选择任务</option>
-                    {visibleAssignments.map((item) => {
+                    {pendingVisibleAssignments.length === 0 ? (
+                      <option value="">当前班级暂无待提交任务</option>
+                    ) : (
+                      <option value="">请选择任务</option>
+                    )}
+                    {pendingVisibleAssignments.map((item) => {
                       const guard = buildAssignmentSubmissionGuard(item);
                       return (
                         <option key={item.assignment_id} value={item.assignment_id}>
@@ -498,6 +563,9 @@ export default function StudentPage() {
                   </p>
                   {!assignmentGuard.allowed && assignmentGuard.reason ? (
                     <p className="mt-1 text-xs text-rose-700">{assignmentGuard.reason}</p>
+                  ) : null}
+                  {selectedAssignmentAlreadySubmitted ? (
+                    <p className="mt-1 text-xs text-rose-700">该任务已提交，请选择未提交任务。</p>
                   ) : null}
                 </div>
 
@@ -544,9 +612,9 @@ export default function StudentPage() {
                 <button
                   className="h-12 w-full rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 text-sm font-semibold text-white"
                   type="submit"
-                  disabled={busy === "submit" || !assignmentGuard.allowed}
+                  disabled={busy === "submit" || !canSubmitSelectedAssignment}
                 >
-                  {busy === "submit" ? "提交中..." : "提交作文"}
+                  {busy === "submit" ? "提交中..." : canSubmitSelectedAssignment ? "提交作文" : "暂无可提交任务"}
                 </button>
               </div>
             </form>
@@ -570,13 +638,13 @@ export default function StudentPage() {
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm" id="visible-tasks">
-              <p className="text-sm font-semibold text-slate-700">当前班级任务</p>
+              <p className="text-sm font-semibold text-slate-700">当前班级待提交任务</p>
               <p className="mt-2 text-xs text-slate-500">当前选中班级：{selectedClassName}</p>
               <ul className="mt-3 space-y-2 text-sm">
-                {visibleAssignments.length === 0 ? (
-                  <li className="text-slate-500">当前班级暂无任务。</li>
+                {pendingVisibleAssignments.length === 0 ? (
+                  <li className="text-slate-500">当前班级暂无待提交任务。</li>
                 ) : (
-                  visibleAssignments.slice(0, 6).map((item) => {
+                  pendingVisibleAssignments.slice(0, 6).map((item) => {
                     const guard = buildAssignmentSubmissionGuard(item);
                     return (
                       <li key={item.assignment_id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
