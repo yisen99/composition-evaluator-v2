@@ -46,19 +46,52 @@ jobs:
         run: |
           # Use HEAD:<target-branch> to support detached HEAD in pull_request workflows
           TARGET_BRANCH="${{ github.head_ref || github.ref_name }}"
-          git push origin "HEAD:${TARGET_BRANCH}" --force
+          set +e
+          PUSH_OUTPUT=$(git push origin "HEAD:${TARGET_BRANCH}" --force 2>&1)
+          PUSH_STATUS=$?
+          set -e
+
+          echo "${PUSH_OUTPUT}"
+
+          if [ "${PUSH_STATUS}" -eq 0 ]; then
+            echo "SYNC_RESULT=success" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+
+          if echo "${PUSH_OUTPUT}" | grep -qiE "permission to .* denied to github-actions\\[bot\\]|requested URL returned error: 403"; then
+            echo "No push permission for github-actions[bot], skipping sync without failing."
+            echo "SYNC_RESULT=skipped_no_permission" >> "${GITHUB_ENV}"
+            exit 0
+          fi
+
+          echo "SYNC_RESULT=failed" >> "${GITHUB_ENV}"
+          exit "${PUSH_STATUS}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Skip sync on pull request
         if: github.event_name == 'pull_request'
         run: |
+          echo "SYNC_RESULT=skipped_pr" >> "${GITHUB_ENV}"
           echo "ℹ️ Skipping sync for pull_request events."
 
       - name: Notify on Success
         if: success()
         run: |
-          echo "✅ Successfully synced to GitHub!"
+          case "${SYNC_RESULT:-unknown}" in
+            success)
+              echo "✅ Successfully synced to GitHub!"
+              ;;
+            skipped_no_permission)
+              echo "ℹ️ Sync skipped: github-actions[bot] has no push permission."
+              ;;
+            skipped_pr)
+              echo "ℹ️ Sync skipped for pull_request event."
+              ;;
+            *)
+              echo "ℹ️ Workflow completed."
+              ;;
+          esac
           echo "Repository: ${{ github.repository }}"
           echo "Branch: $(git branch --show-current)"
           echo "Commit: $(git log -1 --oneline)"
