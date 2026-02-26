@@ -1,4 +1,4 @@
-.PHONY: up down logs compose-config backend-test frontend-test db-upgrade db-downgrade db-stamp-head db-verify-rollback install-hooks
+.PHONY: up down logs compose-config backend-test backend-test-docker frontend-test db-upgrade db-downgrade db-stamp-head db-verify-rollback install-hooks
 
 up:
 	docker compose up --build
@@ -14,6 +14,9 @@ compose-config:
 
 backend-test:
 	cd backend && python3 -m pytest -q
+
+backend-test-docker:
+	docker compose --profile test run --rm backend-test
 
 frontend-test:
 	cd frontend && npm run test -- --run

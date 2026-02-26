@@ -15,6 +15,7 @@ import type {
   CreateAssignmentResponse,
   CreateClassRequest,
   CreateClassResponse,
+  GradingData,
   HealthResponse,
   JoinClassRequest,
   JoinClassResponse,
@@ -38,6 +39,7 @@ import type {
   StudentSubmissionListItem,
   StudentMemoryResponse,
   SwitchRoleRequest,
+  TeacherSubmissionDetail,
   WechatAuthPayload,
   WechatAuthorizeResponse,
   WechatBindPhoneRequest,
@@ -164,7 +166,7 @@ async function createApiError(response: Response): Promise<Error> {
   return new Error(toDisplayErrorMessage(response.status, detail));
 }
 
-async function apiRequest<T>(path: string, init?: RequestInit, withAuth = true): Promise<T> {
+export async function apiRequest<T>(path: string, init?: RequestInit, withAuth = true): Promise<T> {
   const authToken = withAuth ? getAccessToken() : null;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -236,6 +238,22 @@ export function login(payload: LoginRequest): Promise<LoginResponse> {
     method: "POST",
     body: JSON.stringify(payload)
   }, false);
+}
+
+type LoginWithCodeResponse = LoginResponse & { next_action: string };
+
+export function sendVerificationCode(phone: string): Promise<SendCodeResponse> {
+  return sendCode({
+    phone,
+    role_hint: "student"
+  });
+}
+
+export function loginWithCode(phone: string, code: string): Promise<LoginWithCodeResponse> {
+  return login({
+    phone,
+    code
+  }) as Promise<LoginWithCodeResponse>;
 }
 
 export function refreshLogin(payload: RefreshTokenRequest): Promise<LoginResponse> {
@@ -483,5 +501,36 @@ export function trackUxEvent(payload: UxEventTrackRequest): Promise<UxEventTrack
 export function getUxMetricsSummary(days = 7): Promise<UxMetricsSummaryResponse> {
   return apiRequest<UxMetricsSummaryResponse>(`/api/v1/observability/summary?days=${days}`, {
     method: "GET"
+  });
+}
+
+export function getTeacherSubmissionDetail(submissionId: string): Promise<TeacherSubmissionDetail> {
+  return apiRequest<TeacherSubmissionDetail>(`/api/v1/submissions/${submissionId}`, {
+    method: "GET"
+  });
+}
+
+export function getSubmissionManualReview(submissionId: string): Promise<ManualReviewSubmissionResponse> {
+  return apiRequest<ManualReviewSubmissionResponse>(`/api/v1/manual-reviews/submission/${submissionId}`, {
+    method: "GET"
+  });
+}
+
+export function saveGradingDraft(submissionId: string, data: GradingData): Promise<ManualReviewItem> {
+  return apiRequest<ManualReviewItem>("/api/v1/manual-reviews/draft", {
+    method: "POST",
+    body: JSON.stringify({
+      submission_id: submissionId,
+      ...data
+    })
+  });
+}
+
+export function publishGrading(submissionId: string): Promise<ManualReviewItem> {
+  return apiRequest<ManualReviewItem>("/api/v1/manual-reviews/publish", {
+    method: "POST",
+    body: JSON.stringify({
+      submission_id: submissionId
+    })
   });
 }
