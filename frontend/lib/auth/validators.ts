@@ -65,3 +65,14 @@ export function validateSmsCode(value: string, label = "验证码"): string | nu
   }
   return null;
 }
+
+export function validateFourDigitCode(value: string, label = "验证码"): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return `请输入${label}。`;
+  }
+  if (!/^\d{4}$/.test(trimmed)) {
+    return `${label}应为 4 位数字。`;
+  }
+  return null;
+}

@@ -537,3 +537,42 @@ export type UxMetricsSummaryResponse = {
   student_todo_click_count: number;
   event_breakdown: UxEventMetricItem[];
 };
+
+export type StudentOnboardingRequest = {
+  real_name: string;
+  grade: string;
+  city: string;
+  gender: "male" | "female" | "other";
+  password: string;
+};
+
+export type StudentOnboardingResponse = {
+  onboarding_completed: boolean;
+  next_action: string;
+};
+
+export type TeacherSubmissionDetail = {
+  submission_id: string;
+  assignment_id: string;
+  assignment_title: string;
+  class_id: string;
+  class_name: string;
+  student_id: string;
+  student_name: string;
+  content_type: SubmissionContentType;
+  text_content: string | null;
+  file_url: string | null;
+  file_name: string | null;
+  status: string;
+  created_at: string;
+};
+
+export type GradingData = {
+  structure_score: number;
+  language_score: number;
+  value_score: number;
+  summary_feedback: string;
+  actionable_suggestions: string[];
+  strengths?: string;
+  next_goal?: string;
+};
