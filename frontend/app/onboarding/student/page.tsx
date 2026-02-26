@@ -19,7 +19,7 @@ export default function StudentOnboardingPage() {
 
     // Redirect if not a student
     if (session.user.role !== "student") {
-      router.push("/teacher/workbench");
+      router.push("/teacher/tasks");
       return;
     }
   }, [router]);

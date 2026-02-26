@@ -3,6 +3,7 @@
 import React, { type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginWithCode, sendVerificationCode } from "@/lib/api/auth";
+import { resolveNextActionPath } from "@/lib/auth/next-action";
 import { saveAuthSession } from "@/lib/auth/session";
 import { normalizeChinaPhone, validatePhone } from "@/lib/auth/validators";
 
@@ -165,25 +166,7 @@ export function UnifiedLoginForm() {
       });
 
       showToast("ok", "登录成功");
-
-      // Navigate based on next_action
-      switch (response.next_action) {
-        case "onboarding_student":
-          router.push("/onboarding/student");
-          break;
-        case "onboarding_teacher":
-          router.push("/onboarding/teacher");
-          break;
-        case "redirect_to_student_workbench":
-          router.push("/student/workbench");
-          break;
-        case "redirect_to_teacher_workbench":
-          router.push("/teacher/workbench");
-          break;
-        default:
-          // Fallback to home if unknown action
-          router.push("/");
-      }
+      router.push(resolveNextActionPath(response.next_action));
     } catch (error) {
       const message = error instanceof Error ? error.message : "登录失败，请稍后重试";
       showToast("error", message);
