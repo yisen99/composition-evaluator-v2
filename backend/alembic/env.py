@@ -9,9 +9,9 @@ backend_root = Path(__file__).resolve().parents[1]
 if str(backend_root) not in sys.path:
     sys.path.insert(0, str(backend_root))
 
-import app.models  # noqa: F401
-from app.core.config import settings
-from app.db.base import Base
+import app.models  # noqa: E402,F401
+from app.core.config import settings  # noqa: E402
+from app.db.base import Base  # noqa: E402
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)

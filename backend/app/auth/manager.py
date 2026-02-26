@@ -22,7 +22,7 @@ from app.core.config import settings
 from app.db.deps import get_async_db
 from app.db.session import SessionLocal
 from app.models import AuthAccount, User
-from app.schemas.account_auth import AuthAccountCreate, AuthAccountRead, AuthAccountUpdate
+from app.schemas.account_auth import AuthAccountCreate, AuthAccountRead
 from app.services.account_roles import ensure_account_role, resolve_active_role
 from app.services.auth import normalize_phone
 
