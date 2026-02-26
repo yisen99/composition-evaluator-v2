@@ -242,6 +242,22 @@ export function login(payload: LoginRequest): Promise<LoginResponse> {
   }, false);
 }
 
+type LoginWithCodeResponse = LoginResponse & { next_action: string };
+
+export function sendVerificationCode(phone: string): Promise<SendCodeResponse> {
+  return sendCode({
+    phone,
+    role_hint: "student"
+  });
+}
+
+export function loginWithCode(phone: string, code: string): Promise<LoginWithCodeResponse> {
+  return login({
+    phone,
+    code
+  }) as Promise<LoginWithCodeResponse>;
+}
+
 export function refreshLogin(payload: RefreshTokenRequest): Promise<LoginResponse> {
   return apiRequest<LoginResponse>("/api/v1/auth/refresh", {
     method: "POST",
@@ -520,4 +536,3 @@ export function publishGrading(submissionId: string): Promise<ManualReviewItem> 
     })
   });
 }
-
