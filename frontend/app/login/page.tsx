@@ -1,5 +1,73 @@
-import { UnifiedLoginForm } from "./_components/UnifiedLoginForm";
+import Link from "next/link";
+import { withNextPath } from "@/lib/auth/redirect";
 
-export default function LoginPage() {
-  return <UnifiedLoginForm />;
+type LoginEntryPageProps = {
+  searchParams?: {
+    next?: string | string[];
+  };
+};
+
+export default function LoginEntryPage({ searchParams }: LoginEntryPageProps) {
+  const rawNext = searchParams?.next;
+  const next = Array.isArray(rawNext) ? rawNext[0] : rawNext ?? null;
+  const teacherLoginPath = withNextPath("/login/teacher", next);
+  const studentLoginPath = withNextPath("/login/student", next);
+
+  return (
+    <main className="mx-auto min-h-screen max-w-6xl p-6 md:p-10">
+      <section className="poster-shell p-6 md:p-10">
+        <div className="relative z-10 flex flex-col gap-8">
+          <div className="space-y-3">
+            <span className="seal-chip">身份入口</span>
+            <h1 className="poster-title text-4xl font-bold md:text-5xl">选择登录身份</h1>
+            <p className="max-w-2xl text-base text-slate-700 md:text-lg">
+              从这里开始按身份分流。先选角色，再完成注册或登录，最后自动进入对应工作台。
+            </p>
+          </div>
+
+          <div className="paper-card p-5">
+            <p className="label">统一流程</p>
+            <div className="mt-3 grid gap-3 text-sm text-slate-700 md:grid-cols-3">
+              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">第 1 步：选择老师或学生</p>
+              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">第 2 步：在对应页面完成注册或登录</p>
+              <p className="rounded-lg border border-slate-300/50 bg-white/70 px-3 py-2">第 3 步：进入对应工作台继续操作</p>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="paper-card p-6">
+              <p className="label">老师入口</p>
+              <h2 className="mt-2 text-3xl font-semibold">我是老师</h2>
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                <p>1. 使用邮箱密码注册或登录</p>
+                <p>2. 默认进入任务中心，按优先级处理待办</p>
+                <p>3. 在班级与发布页建班并发布任务</p>
+              </div>
+              <Link className="btn-ink mt-4 inline-block text-sm" href={teacherLoginPath}>
+                进入老师登录
+              </Link>
+            </div>
+            <div className="paper-card p-6">
+              <p className="label">学生入口</p>
+              <h2 className="mt-2 text-3xl font-semibold">我是学生</h2>
+              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                <p>1. 使用账号密码或短信快捷登录</p>
+                <p>2. 进入学生工作台输入班级码</p>
+                <p>3. 选择任务并提交作文</p>
+              </div>
+              <Link className="btn-seal mt-4 inline-block text-sm" href={studentLoginPath}>
+                进入学生登录
+              </Link>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-4">
+            <Link className="text-sm text-slate-700 underline" href="/">
+              返回首页
+            </Link>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
 }

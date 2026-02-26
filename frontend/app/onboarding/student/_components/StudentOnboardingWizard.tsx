@@ -3,6 +3,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { completeStudentOnboarding } from "@/lib/api/onboarding";
+import { resolveNextActionPath } from "@/lib/auth/next-action";
 
 type Toast = {
   type: "ok" | "error";
@@ -211,12 +212,11 @@ export function StudentOnboardingWizard() {
         password: formData.password,
       });
 
-      if (response.next_action === "redirect_to_student_workbench") {
-        setToast({ type: "ok", message: "信息提交成功！" });
-        setTimeout(() => {
-          router.push("/student/workbench");
-        }, 500);
-      }
+      const targetPath = resolveNextActionPath(response.next_action);
+      setToast({ type: "ok", message: "信息提交成功！" });
+      setTimeout(() => {
+        router.push(targetPath === "/" ? "/student" : targetPath);
+      }, 500);
     } catch (error) {
       const message = (error as Error).message;
       setToast({ type: "error", message: `提交失败：${message}` });

@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-vi.mock("@/lib/api/auth", () => ({
+vi.mock("@/lib/api/client", () => ({
   sendVerificationCode: vi.fn(),
   loginWithCode: vi.fn(),
 }));
