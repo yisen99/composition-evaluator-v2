@@ -35,8 +35,6 @@ import type {
   SendCodeRequest,
   SendCodeResponse,
   StudentManualFeedbackItem,
-  StudentOnboardingRequest,
-  StudentOnboardingResponse,
   StudentProgressResponse,
   StudentSubmissionListItem,
   StudentMemoryResponse,

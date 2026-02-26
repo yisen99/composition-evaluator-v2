@@ -335,7 +335,7 @@ export function GradingForm({
 
       {isDraft && (
         <p className="text-xs text-slate-600">
-          注意：草稿保存后不会发送给学生，点击"发布批改"后学生才能看到。
+          注意：草稿保存后不会发送给学生，点击“发布批改”后学生才能看到。
         </p>
       )}
     </form>

@@ -43,8 +43,9 @@ jobs:
 
       - name: Sync to GitHub
         run: |
-          # Push to GitHub with force flag to ensure sync
-          git push origin $(git branch --show-current) --force
+          # Use HEAD:<target-branch> to support detached HEAD in pull_request workflows
+          TARGET_BRANCH="${{ github.head_ref || github.ref_name }}"
+          git push origin "HEAD:${TARGET_BRANCH}" --force
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
