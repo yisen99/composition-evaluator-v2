@@ -2,7 +2,7 @@
 
 import React, { type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { loginWithCode, sendVerificationCode } from "@/lib/api/auth";
+import { loginWithCode, sendVerificationCode } from "@/lib/api/client";
 import { resolveNextActionPath } from "@/lib/auth/next-action";
 import { saveAuthSession } from "@/lib/auth/session";
 import { normalizeChinaPhone, validatePhone } from "@/lib/auth/validators";

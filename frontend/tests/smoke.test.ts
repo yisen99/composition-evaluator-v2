@@ -4,6 +4,7 @@ import {
   bindWechatPhone,
   checkHealth,
   login,
+  loginWithCode,
   loginWithPassword,
   registerAccount,
   createReviewSummary,
@@ -33,6 +34,7 @@ import {
   listClasses,
   runSubmissionReview,
   sendWechatBindCode,
+  sendVerificationCode,
   trackUxEvent,
   wechatCallback
 } from "@/lib/api/client";
@@ -1062,6 +1064,74 @@ describe("frontend smoke", () => {
         display_name: "王老师"
       })
     ).rejects.toThrow("当前手机号未绑定老师账号，请先使用邮箱密码登录。");
+
+    vi.unstubAllGlobals();
+  });
+
+  it("sends verification code using student role hint", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ request_id: "req-1", expires_in: 300 }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await sendVerificationCode("13800138000");
+
+    expect(data.request_id).toBe("req-1");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/auth/send-code",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          phone: "13800138000",
+          role_hint: "student"
+        })
+      })
+    );
+
+    vi.unstubAllGlobals();
+  });
+
+  it("logs in with phone verification code and returns next_action", async () => {
+    const mockFetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          access_token: "access-token",
+          refresh_token: "refresh-token",
+          next_action: "redirect_to_student_workbench",
+          user: {
+            id: "user-1",
+            role: "student",
+            available_roles: ["student"],
+            last_active_role: "student",
+            phone: "13800138000",
+            display_name: "学生"
+          }
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }
+      )
+    );
+    vi.stubGlobal("fetch", mockFetch);
+
+    const data = await loginWithCode("13800138000", "123456");
+
+    expect(data.access_token).toBe("access-token");
+    expect(data.next_action).toBe("redirect_to_student_workbench");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/backend/api/v1/auth/login",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          phone: "13800138000",
+          code: "123456"
+        })
+      })
+    );
 
     vi.unstubAllGlobals();
   });
